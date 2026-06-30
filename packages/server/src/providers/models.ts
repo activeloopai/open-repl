@@ -3,7 +3,7 @@ import type { ModelInfo, ProviderId } from '@openrepl/shared';
 /**
  * List selectable models for a provider. For OpenRouter we hit the public
  * /models catalog and keep only models that support tool calling (the agent
- * loop needs it). For Codex/demo we return a small static set.
+ * loop needs it). For Claude/Codex we return a small static set.
  */
 export async function listModels(provider: ProviderId): Promise<ModelInfo[]> {
   if (provider === 'openrouter') return listOpenRouterModels();

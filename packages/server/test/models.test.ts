@@ -32,9 +32,10 @@ describe('listModels', () => {
     expect(models.length).toBeGreaterThan(0);
   });
 
-  it('returns static lists for codex and demo', async () => {
+  it('returns static lists for codex and claude', async () => {
     expect((await listModels('codex')).length).toBeGreaterThan(0);
-    expect(await listModels('demo')).toEqual([{ id: 'demo', name: 'Demo (offline)' }]);
+    const claude = await listModels('claude');
+    expect(claude.map((m) => m.id)).toEqual(expect.arrayContaining(['haiku', 'sonnet', 'opus']));
   });
 });
 
