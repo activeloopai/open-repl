@@ -143,7 +143,13 @@ Set `settingSources: []` and an explicit `allowedTools` (the six tool names + `"
 
 ## 8. Risks
 
-1. **[BLOCKER for the commercial pitch] claude.ai login for a product is restricted.** Verbatim from the SDK overview: *"Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK. Please use the API key authentication methods described in this document instead."* Implication: "let your customers use their Claude subscription" is fine for a **user running the OSS tool themselves with their own local credential**, but offering claude.ai login **as part of an OpenREPL product/service** needs prior Anthropic approval. Default the product to **API-key auth**; treat subscription auth as a local-user convenience, and pursue Anthropic approval before marketing it. Mirror the same caution the README already applies to the Codex channel.
+1. **Subscription auth IS supported for individual self-hosted use — with boundaries.** Per Anthropic's support article *"Use the Claude Agent SDK with your Claude plan"* (`https://support.claude.com/en/articles/15036540`): *"Claude subscription plans are now eligible to receive a monthly Agent SDK credit. This credit covers Claude Agent SDK usage."* So a user running OpenREPL locally with their own Claude plan is the intended path. Boundaries to respect:
+   - **Per-user, not pooled** — *"can't be shared or pooled across teammates."* One plan ≠ many users.
+   - **Shared/production automation** — *"Teams running shared production automation should use Claude Platform with an API key for predictable pay-as-you-go billing."*
+   - **Hosted product offering claude.ai login to your end-users** — the SDK overview note (*"Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login… for their products"*) applies to a service **you host** for others; needs prior Anthropic approval.
+   - **June 15, 2026 update paused the credit changes** — *"for now, nothing has changed: Claude Agent SDK usage still draws from your subscription's usage limits."* Track this; it may change.
+
+   **Decision (per product owner):** subscription is the **default** for the single local user (matches the cost-saving pitch); **API key** for any shared/hosted/multi-tenant deployment. Support both at runtime.
 2. **Provider lock-in.** The Agent SDK loop is Claude-native; OpenRouter/other models cannot run *through* it without a gateway. Hence the dual-engine design (§4.1) rather than routing everything through the SDK.
 3. **Terms of Service.** Use is governed by Anthropic's Commercial Terms, including when powering a product for end users — review before shipping commercially.
 4. **Model-ID drift.** Use aliases (`haiku`/`sonnet`/`opus`) not pinned dated IDs, to avoid retirement breakage.
