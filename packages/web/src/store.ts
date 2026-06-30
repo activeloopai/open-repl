@@ -48,7 +48,7 @@ export interface AppState {
 const initial: AppState = {
   connected: false,
   workspaceDir: '',
-  provider: 'openrouter',
+  provider: 'claude',
   tree: [],
   openPath: null,
   openContent: '',
