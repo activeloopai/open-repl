@@ -16,7 +16,7 @@
  *
  * Writes a verdict to .test-tmp/claude-engine.txt. Run: npx tsx scripts/check-claude-engine.ts
  */
-import { promises as fs, writeFileSync, existsSync } from 'node:fs';
+import { promises as fs, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,7 +31,7 @@ const OUT = '.test-tmp/claude-engine.txt';
 function report(lines: string[]): void {
   const text = lines.join('\n') + '\n';
   try {
-    fs.mkdir('.test-tmp', { recursive: true });
+    mkdirSync('.test-tmp', { recursive: true }); // sync: writeFileSync below must not race the dir
   } catch {
     /* best effort */
   }
@@ -86,16 +86,34 @@ function waitFor(ws: WebSocket, events: UiEvent[], pred: (e: UiEvent) => boolean
   return new Promise((resolve, reject) => {
     const existing = events.find(pred);
     if (existing) return resolve(existing);
-    const t = setTimeout(() => reject(new Error(`timeout after ${Math.round(ms / 1000)}s waiting for event`)), ms);
+    const cleanup = () => {
+      clearTimeout(t);
+      ws.off('message', h);
+      ws.off('close', onClose);
+      ws.off('error', onErr);
+    };
+    const t = setTimeout(() => {
+      cleanup();
+      reject(new Error(`timeout after ${Math.round(ms / 1000)}s waiting for event`));
+    }, ms);
+    const onClose = () => {
+      cleanup();
+      reject(new Error('websocket closed before the expected event'));
+    };
+    const onErr = (err: Error) => {
+      cleanup();
+      reject(err);
+    };
     const h = (raw: WebSocket.RawData) => {
       const e = JSON.parse(raw.toString()) as UiEvent;
       if (pred(e)) {
-        clearTimeout(t);
-        ws.off('message', h);
+        cleanup();
         resolve(e);
       }
     };
     ws.on('message', h);
+    ws.on('close', onClose);
+    ws.on('error', onErr);
   });
 }
 
@@ -128,7 +146,12 @@ async function main() {
   // Open a fresh project. DEFAULT_CONFIG.provider is already 'claude', so the
   // run goes through ClaudeAgentEngine — assert it from the ready event.
   ws.send(JSON.stringify({ type: 'open_project', path: projectDir }));
-  const ready = (await waitFor(ws, events, (e) => e.type === 'ready', 10000)) as Extract<UiEvent, { type: 'ready' }>;
+  const ready = (await waitFor(
+    ws,
+    events,
+    (e) => e.type === 'ready' && (e as Extract<UiEvent, { type: 'ready' }>).workspaceDir === projectDir,
+    10000,
+  )) as Extract<UiEvent, { type: 'ready' }>;
   if (ready.provider !== 'claude') {
     report([`FAIL — project did not open with provider='claude' (got '${ready.provider}')`]);
     ws.close();
