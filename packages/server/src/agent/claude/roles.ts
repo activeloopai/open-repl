@@ -51,8 +51,11 @@ const ORCHESTRATOR_TOOLS = [
   'Agent',
   ...['read_file', 'write_file', 'list_dir', 'search_repo', 'run_command', 'run_app'].map(mcpToolName),
 ];
+// Read-only built-ins only. The reviewer deliberately does NOT get Bash: with
+// the default empty allowlist (allow-all), Bash would let a "read-only" reviewer
+// run mutating shell commands. No role needs the built-in Bash — the
+// orchestrator runs commands through the gated run_command MCP tool instead.
 const READONLY_BUILTIN = ['Read', 'Glob', 'Grep'];
-const REVIEWER_BUILTIN = ['Read', 'Glob', 'Grep', 'Bash'];
 
 const PLANNER_PROMPT =
   'You are the Planner. Inspect the workspace with Read, Glob, and Grep and return a short, ' +
@@ -60,7 +63,7 @@ const PLANNER_PROMPT =
 
 const REVIEWER_PROMPT =
   'You are the Reviewer. Inspect the changes with Read, Glob, and Grep for correctness and obvious ' +
-  'quality issues, and report concise findings. You may use Bash for read-only checks. Do NOT edit files.';
+  'quality issues, and report concise findings. Do NOT edit files.';
 
 const ORCHESTRATOR_PROMPT =
   'You are the lead engineer coordinating a small team. ' +
@@ -94,7 +97,7 @@ export function roles(cfg: RolesConfig = {}): Record<string, AgentDefinition> {
     reviewer: {
       description: 'Independently reviews the changes for correctness and quality. Read-only.',
       prompt: REVIEWER_PROMPT,
-      tools: REVIEWER_BUILTIN,
+      tools: READONLY_BUILTIN,
       model: modelFor(cfg, 'reviewer'),
     },
   };

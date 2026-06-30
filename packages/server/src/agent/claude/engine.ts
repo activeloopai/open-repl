@@ -24,15 +24,19 @@ const MCP_SERVER = 'openrepl';
  * inside delegated subagents, where the in-process MCP server does not).
  */
 const MCP_TOOLS = ['read_file', 'write_file', 'list_dir', 'search_repo', 'run_command', 'run_app'] as const;
-const BUILTIN_TOOLS = ['Read', 'Glob', 'Grep', 'Bash'] as const;
+// Read-only built-ins for the advisory subagents. No built-in Bash/Write/Edit:
+// the orchestrator does all mutation through the gated MCP tools, and a built-in
+// Bash would let a "read-only" reviewer run shell commands under the default
+// allow-all allowlist.
+const BUILTIN_TOOLS = ['Read', 'Glob', 'Grep'] as const;
 const allowedTools = ['Agent', ...BUILTIN_TOOLS, ...MCP_TOOLS.map((n) => `mcp__${MCP_SERVER}__${n}`)];
 
 /**
- * Permission gate (PRD §4.3): auto-approve the built-in tools + `Agent` + the
- * OpenREPL MCP tools, deny anything else, and enforce the command allowlist on
- * both `Bash` (subagents) and the `run_command` MCP tool (orchestrator) via the
- * shared `isCommandAllowed` predicate — same gate the MCP handler uses (no
- * duplicate), and it rejects shell-operator chaining past the allowlist.
+ * Permission gate (PRD §4.3): auto-approve the read-only built-ins + `Agent` +
+ * the OpenREPL MCP tools, deny anything else, and enforce the command allowlist
+ * on the `run_command` MCP tool via the shared `isCommandAllowed` predicate —
+ * same gate the MCP handler uses (no duplicate), and it rejects shell-operator
+ * chaining past the allowlist.
  */
 function makeCanUseTool(allowlist: string[]): CanUseTool {
   const permitted = new Set<string>([...BUILTIN_TOOLS, 'Agent', ...MCP_TOOLS]);
@@ -41,7 +45,7 @@ function makeCanUseTool(allowlist: string[]): CanUseTool {
     if (!permitted.has(bare)) {
       return { behavior: 'deny', message: `Tool not permitted: ${toolName}` };
     }
-    if (bare === 'Bash' || bare === 'run_command') {
+    if (bare === 'run_command') {
       const command = String((input as { command?: unknown }).command ?? '');
       if (!isCommandAllowed(command, allowlist)) {
         return { behavior: 'deny', message: `Command blocked by allowlist: ${command}` };
@@ -96,8 +100,11 @@ export class ClaudeAgentEngine implements AgentEngine {
       // file_changed for the live editor). Without it the SDK uses the server
       // process cwd and the app is written into the wrong directory.
       cwd: deps.workspace.root,
-      // Isolate from any host ~/.claude/ config (PRD §4.3 / acceptance §6.6).
+      // Isolate from any host config (PRD §4.3 / acceptance §6.6): settingSources
+      // [] drops ~/.claude settings, and strictMcpConfig ignores host/project
+      // .mcp.json so ONLY our in-process openrepl server is connected.
       settingSources: [],
+      strictMcpConfig: true,
       allowedTools,
       canUseTool: makeCanUseTool(config.commandAllowlist),
       maxTurns: config.maxSteps,

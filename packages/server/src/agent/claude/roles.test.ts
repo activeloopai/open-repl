@@ -58,11 +58,10 @@ describe('roles — tool subsets (least privilege)', () => {
     for (const forbidden of ['Write', 'Edit', 'Bash']) expect(tools).not.toContain(forbidden);
   });
 
-  it('reviewer: read-only built-ins plus Bash for checks, but cannot write', () => {
+  it('reviewer: strictly read-only built-ins — no Write/Edit and no Bash (would defeat read-only under the default allow-all allowlist)', () => {
     const tools = roles().reviewer.tools!;
-    expect(tools).toEqual(['Read', 'Glob', 'Grep', 'Bash']);
-    expect(tools).not.toContain('Write');
-    expect(tools).not.toContain('Edit');
+    expect(tools).toEqual(['Read', 'Glob', 'Grep']);
+    for (const forbidden of ['Write', 'Edit', 'Bash']) expect(tools).not.toContain(forbidden);
   });
 
   it('subagents never receive an MCP tool (unreliable for delegated agents)', () => {

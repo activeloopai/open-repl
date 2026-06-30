@@ -29,6 +29,13 @@ const SHELL_OPERATORS = /[;&|`\n<>]|\$\(/;
  * the engine's canUseTool (no duplicate predicate). Empty allowlist = allow all
  * (the UI shows a banner); otherwise the command must contain no shell operators
  * AND start with an allowed prefix.
+ *
+ * NOTE: this is a coarse prefix guard, not a sandbox. It blocks operator
+ * chaining, but an allowed binary that can itself spawn a shell (e.g. allowing
+ * `npm` still permits `npm exec -- sh -c ...`, allowing `bash` permits `bash -c
+ * ...`) can escape the intent. True isolation needs OS-level sandboxing, which
+ * OpenREPL deliberately defers (it runs locally, no Docker). Treat the allowlist
+ * as defense-in-depth, and only relax it to binaries you trust to not re-shell.
  */
 export function isCommandAllowed(command: string, allowlist: string[]): boolean {
   if (allowlist.length === 0) return true;
