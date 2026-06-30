@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  # Run on every PR regardless of base branch.
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-test:
+    name: Typecheck and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build web
+        run: npm run build:web
+
+  duplication:
+    # Code-duplication regression guard (jscpd). Separate job so the PR checks
+    # table shows a dedicated pass/fail row. Threshold lives in .jscpd.json.
+    name: Duplication check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run jscpd
+        run: npm run dup
+      - name: Upload jscpd report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jscpd-report
+          path: jscpd-report/
+          if-no-files-found: ignore

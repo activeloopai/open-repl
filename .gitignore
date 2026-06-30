@@ -9,3 +9,4 @@ dist/
 coverage/
 packages/web/dist/
 .test-tmp/
+jscpd-report/
