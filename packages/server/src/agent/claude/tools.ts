@@ -41,7 +41,14 @@ export function isCommandAllowed(command: string, allowlist: string[]): boolean 
   if (allowlist.length === 0) return true;
   const trimmed = command.trim();
   if (SHELL_OPERATORS.test(trimmed)) return false;
-  return allowlist.some((prefix) => trimmed.startsWith(prefix));
+  // Match on a command boundary: an allowed prefix must be the whole command or
+  // be followed by whitespace, so `npm` does not also permit `npmx` and
+  // `npm test` does not permit `npm test2`.
+  return allowlist.some((prefix) => {
+    if (!trimmed.startsWith(prefix)) return false;
+    const next = trimmed.charAt(prefix.length);
+    return next === '' || next === ' ' || next === '\t';
+  });
 }
 
 /** Wrap a plain result object as an MCP CallToolResult (text content). */

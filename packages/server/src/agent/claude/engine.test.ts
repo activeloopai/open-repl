@@ -27,6 +27,14 @@ describe('canUseTool — permission + allowlist', () => {
     expect((await gate('mcp__openrepl__run_command', { command: 'rm -rf /' }, ctx)).behavior).toBe('deny');
     expect((await gate('mcp__openrepl__run_command', { command: 'npm test && rm -rf /' }, ctx)).behavior).toBe('deny');
   });
+
+  it('matches the allowlist on a command boundary (npm does not allow npmx)', async () => {
+    const gate = makeCanUseTool(['npm', 'git status']);
+    expect((await gate('mcp__openrepl__run_command', { command: 'npm' }, ctx)).behavior).toBe('allow');
+    expect((await gate('mcp__openrepl__run_command', { command: 'npmx run evil' }, ctx)).behavior).toBe('deny');
+    expect((await gate('mcp__openrepl__run_command', { command: 'git status' }, ctx)).behavior).toBe('allow');
+    expect((await gate('mcp__openrepl__run_command', { command: 'git statusx' }, ctx)).behavior).toBe('deny');
+  });
 });
 
 describe('canUseTool — read-only loop guard', () => {
