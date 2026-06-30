@@ -44,6 +44,26 @@ export const DEFAULT_CONFIG: OpenReplConfig = {
   multiAgent: true,
 };
 
+/**
+ * Provider-appropriate default model + per-role tiers. The defaults above are
+ * Claude SDK aliases (`sonnet`/`opus`/`haiku`); those are NOT valid model ids
+ * for OpenRouter/Codex, so switching provider must also swap the model defaults
+ * (see Session `set_provider`) — otherwise an OpenRouter run would be sent the
+ * literal string "sonnet".
+ */
+export const PROVIDER_DEFAULTS: Record<ProviderId, Pick<OpenReplConfig, 'model' | 'models'>> = {
+  claude: { model: 'sonnet', models: { orchestrator: 'opus', planner: 'haiku', reviewer: 'sonnet' } },
+  openrouter: {
+    model: 'anthropic/claude-sonnet-4.6',
+    models: {
+      orchestrator: 'anthropic/claude-sonnet-4.6',
+      planner: 'google/gemini-2.5-flash',
+      reviewer: 'anthropic/claude-sonnet-4.6',
+    },
+  },
+  codex: { model: 'gpt-5.1', models: {} },
+};
+
 /** Resolve the model for a role, falling back to the default model. */
 export function modelFor(config: OpenReplConfig, role?: Exclude<AgentRole, 'default'>): string {
   return (role && config.models[role]) || config.model;

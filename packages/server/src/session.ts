@@ -17,7 +17,7 @@ import { BudgetGuard } from './agent/guards.js';
 import type { AgentRun, ModelProvider } from './providers/types.js';
 import { runRole } from './agent/runtime.js';
 import { listModels } from './providers/models.js';
-import { loadConfig, saveConfig, type OpenReplConfig } from './config.js';
+import { loadConfig, saveConfig, PROVIDER_DEFAULTS, type OpenReplConfig } from './config.js';
 
 /** Everything bound to one open project. Null when no project is open. */
 interface Mount {
@@ -100,11 +100,20 @@ export class Session {
           return void (await this.sendWorkflows(m));
         case 'run_workflow':
           return void (await this.runWorkflow(m, cmd.name));
-        case 'set_provider':
+        case 'set_provider': {
           m.config.provider = cmd.provider;
+          // Swap to provider-appropriate model defaults: the Claude SDK aliases
+          // (sonnet/opus/haiku) are not valid OpenRouter/Codex model ids, so a
+          // bare provider switch would otherwise send "sonnet" to OpenRouter.
+          const defaults = PROVIDER_DEFAULTS[cmd.provider];
+          if (defaults) {
+            m.config.model = defaults.model;
+            m.config.models = { ...defaults.models };
+          }
           await saveConfig(m.dir, m.config);
           this.emit({ type: 'provider_status', provider: cmd.provider, state: 'ok' });
           return void (await this.sendModels(m));
+        }
         case 'list_models':
           return void (await this.sendModels(m));
         case 'set_model': {
