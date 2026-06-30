@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['packages/**/test/**/*.test.ts'],
+    include: ['packages/**/test/**/*.test.ts', 'packages/**/src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       include: ['packages/server/src/**', 'packages/shared/src/**'],
