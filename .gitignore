@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.openrepl/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+packages/web/dist/
+.test-tmp/

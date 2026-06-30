@@ -1,0 +1,30 @@
+{
+  "name": "openrepl-monorepo",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "OpenREPL — an open-source, self-hosted Replit alternative. Bring your own model.",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/web",
+    "packages/cli"
+  ],
+  "scripts": {
+    "build:web": "vite build packages/web",
+    "start": "npm run build:web && tsx packages/cli/src/index.ts",
+    "dev:server": "tsx watch packages/cli/src/index.ts",
+    "dev:web": "vite packages/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.base.json --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@vitest/coverage-v8": "^2.1.8",
+    "vite": "^6.0.5",
+    "@vitejs/plugin-react": "^4.3.4"
+  }
+}
