@@ -36,6 +36,15 @@ jobs:
         with:
           languages: javascript-typescript
           queries: security-extended
+          # Scan shipped product source only. Dev/test harnesses (scripts/,
+          # *.test.ts) are not deployed and trip taint queries on values that
+          # come from our own server, not an attacker (e.g. the e2e driver's
+          # provider check). Keep SAST focused on packages/*/src.
+          config: |
+            paths-ignore:
+              - scripts/**
+              - "**/*.test.ts"
+              - "**/dist/**"
       - name: Analyze
         uses: github/codeql-action/analyze@v3
         with:
