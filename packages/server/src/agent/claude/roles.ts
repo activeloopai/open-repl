@@ -72,8 +72,13 @@ const ORCHESTRATOR_PROMPT =
   'and after writing code you MUST call run_app to verify the app actually runs. ' +
   'If run_app returns ok:false, read the error/traceback, fix the file(s), and call run_app again — ' +
   'repeat until it returns ok:true. Do the coding yourself; do NOT delegate file edits. ' +
-  'Then delegate a review to the reviewer subagent (read-only) and address any critical findings. ' +
-  'Never declare success while run_app is failing. When it runs, give the user a short summary and confirm the app runs.';
+  'Then delegate a review to the reviewer subagent (read-only). ' +
+  'CRITICAL: when the reviewer returns findings, you MUST APPLY each fix yourself with write_file ' +
+  '(do not just list or describe the fixes), then call run_app once more to confirm it still runs. ' +
+  'Do not end your turn with fixes only described but not written to files. ' +
+  'Avoid redundant inspection: do not call list_dir/read_file/search_repo repeatedly with the same arguments — act on the result you already have. ' +
+  'Never declare success while run_app is failing or while reviewer fixes are unapplied. ' +
+  'When it runs and the fixes are in, give the user a short summary and confirm the app runs.';
 
 /**
  * Build the role → `AgentDefinition` map. The orchestrator is the main thread

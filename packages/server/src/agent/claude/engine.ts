@@ -31,15 +31,26 @@ const MCP_TOOLS = ['read_file', 'write_file', 'list_dir', 'search_repo', 'run_co
 const BUILTIN_TOOLS = ['Read', 'Glob', 'Grep'] as const;
 const allowedTools = ['Agent', ...BUILTIN_TOOLS, ...MCP_TOOLS.map((n) => `mcp__${MCP_SERVER}__${n}`)];
 
+/** Read-only tools that are safe to dedupe: identical repeated calls add nothing. */
+const READONLY_FOR_LOOP_GUARD = new Set(['Read', 'Glob', 'Grep', 'read_file', 'list_dir', 'search_repo']);
+/** Allow this many identical read-only calls before treating it as a stuck loop. */
+const LOOP_LIMIT = 2;
+
 /**
  * Permission gate (PRD §4.3): auto-approve the read-only built-ins + `Agent` +
- * the OpenREPL MCP tools, deny anything else, and enforce the command allowlist
- * on the `run_command` MCP tool via the shared `isCommandAllowed` predicate —
- * same gate the MCP handler uses (no duplicate), and it rejects shell-operator
- * chaining past the allowlist.
+ * the OpenREPL MCP tools, deny anything else, enforce the command allowlist on
+ * the `run_command` MCP tool, and break stuck read-only loops.
+ *
+ * Loop guard: a real run-log showed the orchestrator calling `list_dir {"."}`
+ * ~14× in a row, burning the turn budget so the reviewer's fixes were never
+ * applied. We dedupe identical read-only calls — after LOOP_LIMIT repeats we
+ * deny with a message pointing back at the prior result. Side-effecting tools
+ * (write_file/run_command/run_app) are never deduped — they legitimately repeat
+ * in the run → fix loop.
  */
-function makeCanUseTool(allowlist: string[]): CanUseTool {
+export function makeCanUseTool(allowlist: string[]): CanUseTool {
   const permitted = new Set<string>([...BUILTIN_TOOLS, 'Agent', ...MCP_TOOLS]);
+  const seen = new Map<string, number>();
   return async (toolName, input) => {
     const bare = toolName.replace(/^mcp__openrepl__/, '');
     if (!permitted.has(bare)) {
@@ -49,6 +60,17 @@ function makeCanUseTool(allowlist: string[]): CanUseTool {
       const command = String((input as { command?: unknown }).command ?? '');
       if (!isCommandAllowed(command, allowlist)) {
         return { behavior: 'deny', message: `Command blocked by allowlist: ${command}` };
+      }
+    }
+    if (READONLY_FOR_LOOP_GUARD.has(bare)) {
+      const key = `${bare}:${JSON.stringify(input ?? {})}`;
+      const n = (seen.get(key) ?? 0) + 1;
+      seen.set(key, n);
+      if (n > LOOP_LIMIT) {
+        return {
+          behavior: 'deny',
+          message: `You already ran ${bare} with these exact arguments ${n - 1}×. The result has not changed — use the previous result and move on instead of repeating the call.`,
+        };
       }
     }
     return { behavior: 'allow' };
