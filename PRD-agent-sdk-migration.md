@@ -96,15 +96,15 @@ Re-express the three existing roles as SDK subagents, preserving their current p
 
 Tiers are **config-overridable** per role (reuse the existing `config.models` per-role map surfaced in `session.ts:254`). Default mapping encodes the user's intent: Haiku for weak/cheap roles, Opus/Sonnet for strong roles.
 
-### 4.3 Tools — preserve live UI
+### 4.3 Tools — split by thread (revised after the real-run e2e)
 
-The crown-jewel behaviors (live editor sync, streamed terminal, the `run_app` self-healing loop) depend on writes going through `workspace.writeFile` and commands through the existing `CommandRunner`/probe. Therefore **do not** rely on the SDK's built-in `Write`/`Bash`; instead expose the existing six tools as in-process MCP tools via `createSdkMcpServer`, wrapping the exact `ToolDeps` already built in `session.ts:286-294`:
+The original plan was to expose all six OpenREPL tools as one in-process MCP server (`createSdkMcpServer`) for every agent. The end-to-end test (against a real Claude subscription) disproved that for **subagents**: an in-process SDK MCP server is only reachable from the **main thread**. A delegated subagent runs detached and every MCP tool call comes back `"Stream closed"`, so its writes never land on disk (verified: `write_file` requested 6–8×, 0 files written). The SDK's **built-in** tools, by contrast, execute in the SDK subprocess against `cwd` and work fine inside subagents. So the validated split is:
 
-- `read_file, write_file, list_dir, search_repo` → `workspace.*`
-- `run_command` → `CommandRunner` (+ the existing allowlist, enforced in `canUseTool` or inside the handler)
-- `run_app` → `probeApp` (the run → observe → fix loop; `agent/probe.ts:19`)
+- **Subagents (planner/coder/reviewer): built-in tools** — `Read`, `Glob`, `Grep` (planner/reviewer, read-only), plus `Write`, `Edit`, `Bash` (coder). With `cwd` set to the workspace root, the coder's writes land in the project, chokidar fires `file_changed`, and the editor updates live — the same UX the MCP path was meant to give.
+- **`run_app` stays an in-process MCP tool** (`probeApp`, `agent/probe.ts:19`) wired only to the **orchestrator** (main thread, where MCP works). The orchestrator drives the run → fix loop: delegate code → call `run_app` → on failure re-delegate a fix with the traceback → repeat until it serves. This preserves probeApp's port-detect/teardown self-healing.
+- **Command allowlist** (`config.commandAllowlist`) is enforced in `canUseTool` against the built-in `Bash` tool's `command` input, via a shared `isCommandAllowed` predicate that also rejects shell-operator chaining (`&&`, `;`, `|`, …).
 
-Set `settingSources: []` and an explicit `allowedTools` (the six tool names + `"Agent"`) so no `.claude/` config leaks in and the built-in Write/Bash are not used. Map the command allowlist (`config.commandAllowlist`, `tools.ts:12-15`) into `canUseTool`.
+Set `settingSources: []` and `cwd: workspace.root`; `allowedTools` = `Agent` + the six built-ins + `mcp__openrepl__run_app`. The in-process MCP server (`tools.ts`) still wraps all six OpenREPL tools, but only `run_app` is given to an agent; the file/command built-ins replace the rest for subagents.
 
 ### 4.4 Events & usage
 
@@ -136,8 +136,8 @@ Set `settingSources: []` and an explicit `allowedTools` (the six tool names + `"
 ## 7. Open design decisions (decide before/early in build)
 
 1. **Non-Claude multi-agent.** Keep the legacy hand-rolled orchestrator for OpenRouter multi-agent, or make multi-agent Claude-only and OpenRouter single-agent-only? (Leaning: Claude-only multi-agent; OpenRouter = single-agent override. Simpler, matches stated intent.)
-2. **Tools: custom-MCP vs built-ins + watcher.** Custom MCP (chosen above) preserves terminal streaming and `run_app`. Revisit only if streaming the SDK's `Bash` output into xterm proves clean.
-3. **Result-message cost fields** — confirm names against the SDK message-types reference (§4.4).
+2. **Tools: custom-MCP vs built-ins — RESOLVED (§4.3).** The e2e proved in-process MCP doesn't reach subagents → subagents use built-in tools, `run_app` stays MCP on the orchestrator. Tradeoff accepted: the coder's `Bash` output lands as a tool result (shown in the UI) rather than streaming into the xterm PTY; the manual terminal still uses the PTY.
+3. **Result-message cost fields** — confirmed against `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` (`usage`, `total_cost_usd`, `result`).
 
 ---
 
