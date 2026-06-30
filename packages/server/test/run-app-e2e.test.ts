@@ -1,0 +1,46 @@
+import { describe, it, expect } from 'vitest';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import WebSocket from 'ws';
+import { createServer } from '../src/index.js';
+import { tmpWorkspace } from './helpers.js';
+import type { UiEvent } from '@openrepl/shared';
+
+/**
+ * True end-to-end: a non-technical user clicks "Run app" on a static site and
+ * the Preview proxy serves it — exercising run_app → static server → preview proxy.
+ */
+describe('Run app (static) end-to-end through the preview proxy', () => {
+  it('serves the user app at /__preview after run_app', async () => {
+    const dir = await tmpWorkspace();
+    await fs.writeFile(path.join(dir, 'index.html'), '<!doctype html><h1>MY-APP-LIVE</h1>');
+
+    const server = await createServer({ workspaceDir: dir, port: 4740 });
+    const ws = new WebSocket(server.url.replace('http', 'ws') + '/ws');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('timeout waiting for app running')), 10000);
+        ws.on('open', () => ws.send(JSON.stringify({ type: 'run_app' })));
+        ws.on('message', (raw) => {
+          const e = JSON.parse(raw.toString()) as UiEvent;
+          if (e.type === 'app_status' && e.state === 'running') {
+            clearTimeout(t);
+            resolve();
+          }
+          if (e.type === 'app_status' && e.state === 'error') {
+            clearTimeout(t);
+            reject(new Error(e.message));
+          }
+        });
+        ws.on('error', reject);
+      });
+
+      const res = await fetch(server.url + '/__preview/');
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain('MY-APP-LIVE');
+    } finally {
+      ws.close();
+      await server.close();
+    }
+  });
+});

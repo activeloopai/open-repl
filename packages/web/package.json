@@ -1,0 +1,26 @@
+{
+  "name": "@openrepl/web",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@openrepl/shared": "0.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@uiw/react-codemirror": "^4.23.7",
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/lang-python": "^6.1.6",
+    "@codemirror/lang-html": "^6.4.9",
+    "@codemirror/lang-json": "^6.0.1",
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "recharts": "^2.15.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5"
+  }
+}

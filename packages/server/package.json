@@ -1,0 +1,22 @@
+{
+  "name": "@openrepl/server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.67",
+    "@openrepl/shared": "0.1.0",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "ai": "^6.0.194",
+    "chokidar": "^4.0.3",
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13"
+  }
+}
