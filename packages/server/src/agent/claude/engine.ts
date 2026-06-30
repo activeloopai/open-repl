@@ -165,7 +165,10 @@ export class ClaudeAgentEngine implements AgentEngine {
       // turn (the user keeps the files written so far and a usage record). Only
       // a genuinely empty run propagates the error.
       if (signal.aborted || finalText || result.tokensOut > 0) {
-        if (!result.text) result.text = finalText || '(run ended early — partial result kept)';
+        // Keep only real streamed text — never synthesize a placeholder, or
+        // finishRun would persist a fake assistant message to memory for a
+        // stop-before-any-output abort and poison the next turn's context.
+        if (!result.text) result.text = finalText;
         return result;
       }
       throw e;
