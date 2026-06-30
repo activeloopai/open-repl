@@ -9,9 +9,10 @@ import { PreviewManager } from './preview.js';
 import { detectWorkflows, WorkflowManager } from './workflow.js';
 import { ProviderRegistry } from './providers/registry.js';
 import { ProjectRegistry } from './projects.js';
-import { buildTools } from './agent/tools.js';
+import { buildTools, type ToolDeps } from './agent/tools.js';
 import { probeApp } from './agent/probe.js';
 import { runMultiAgent } from './agent/orchestrator.js';
+import { ClaudeAgentEngine } from './agent/claude/engine.js';
 import { BudgetGuard } from './agent/guards.js';
 import type { AgentRun, ModelProvider } from './providers/types.js';
 import { runRole } from './agent/runtime.js';
@@ -283,7 +284,9 @@ export class Session {
     this.emit({ type: 'agent_start', runId });
 
     const budget = new BudgetGuard(m.config.maxTokens);
-    const tools = buildTools({
+    // The exact deps both engines share: writes through workspace.writeFile,
+    // commands through CommandRunner, app launch through probeApp (PRD §4.3).
+    const deps: ToolDeps = {
       workspace: m.workspace,
       commandAllowlist: m.config.commandAllowlist,
       runCommand: async (command) => {
@@ -291,7 +294,35 @@ export class Session {
         return { code, output: m.shell.lastOutput };
       },
       runApp: () => probeApp(m.dir, () => m.secrets.all()),
-    });
+    };
+
+    // Claude provider → Claude Agent SDK engine (PRD §4.1). Same UiEvent stream
+    // and RunResult feeding makeUsageRecord; the existing AbortController drives
+    // the engine's own abort so the Stop button still kills a run (PRD §4.4).
+    if (m.config.provider === 'claude') {
+      try {
+        const engine = new ClaudeAgentEngine();
+        const result = await engine.run({
+          runId,
+          messages: m.memory.history(),
+          config: m.config,
+          deps,
+          signal: controller.signal,
+          emit: (e) => this.emit(e),
+          apiKey: await m.registry.claudeApiKey(),
+        });
+        budget.add(result.tokensIn, result.tokensOut);
+        await this.finishRun(m, runId, 'claude', result.text, result.tokensIn, result.tokensOut, result.costUSD, result.planUnits);
+      } catch (e) {
+        this.emit({ type: 'error', scope: 'agent', message: e instanceof Error ? e.message : String(e) });
+        this.emit({ type: 'done', runId });
+      } finally {
+        this.activeRun = null;
+      }
+      return;
+    }
+
+    const tools = buildTools(deps);
 
     const run: AgentRun = {
       runId,

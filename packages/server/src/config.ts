@@ -23,18 +23,22 @@ export interface OpenReplConfig {
 }
 
 export const DEFAULT_CONFIG: OpenReplConfig = {
-  provider: 'openrouter',
-  // Single-agent default + fallback: a capable all-rounder (NOT gpt-4o-mini).
-  model: 'anthropic/claude-sonnet-4.6',
-  // Per-role defaults we pick: cheap+reliable orchestrator, fast execution models.
-  // (Tunable in the Models tab; presets eco/medium/high are on the roadmap.)
+  // Claude Agent SDK is the default: native multi-agent, subscription-first auth
+  // (PRD §4.1 / §5). Switch to OpenRouter/Codex in the Models tab.
+  provider: 'claude',
+  // Default model tier (SDK alias) used when a role has no explicit tier.
+  model: 'sonnet',
+  // Per-role model tiers (PRD §4.2): Haiku for the cheap read-only planner,
+  // Sonnet for the reviewer, Opus for the orchestrator (which does the coding —
+  // see agent/claude/roles.ts). Config-overridable per role.
   models: {
-    orchestrator: 'openai/gpt-5-mini',
-    planner: 'google/gemini-2.5-flash',
-    coder: 'google/gemini-2.5-flash',
-    reviewer: 'google/gemini-2.5-flash',
+    orchestrator: 'opus',
+    planner: 'haiku',
+    reviewer: 'sonnet',
   },
-  maxSteps: 20,
+  // A full multi-agent build (plan → code → pip install → run → fix → review)
+  // needs headroom; 20 turns truncated real Flask builds mid-flow.
+  maxSteps: 50,
   maxTokens: 100_000,
   commandAllowlist: [],
   multiAgent: true,

@@ -40,7 +40,7 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-export type ProviderId = 'openrouter' | 'codex';
+export type ProviderId = 'openrouter' | 'codex' | 'claude';
 
 /** Roles that can each be assigned their own model. 'default' is the fallback. */
 export type AgentRole = 'default' | 'orchestrator' | 'planner' | 'coder' | 'reviewer';
