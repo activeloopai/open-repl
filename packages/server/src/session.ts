@@ -312,7 +312,11 @@ export class Session {
           apiKey: await m.registry.claudeApiKey(),
         });
         budget.add(result.tokensIn, result.tokensOut);
-        await this.finishRun(m, runId, 'claude', result.text, result.tokensIn, result.tokensOut, result.costUSD, result.planUnits);
+        // Record under the orchestrator tier (the main coding model), not the
+        // generic config.model, so the dashboard's by-model accounting reflects
+        // what actually ran the turn.
+        const claudeModel = m.config.models?.orchestrator || m.config.model;
+        await this.finishRun(m, runId, 'claude', result.text, result.tokensIn, result.tokensOut, result.costUSD, result.planUnits, claudeModel);
       } catch (e) {
         this.emit({ type: 'error', scope: 'agent', message: e instanceof Error ? e.message : String(e) });
         this.emit({ type: 'done', runId });
@@ -382,9 +386,10 @@ export class Session {
     tokensOut: number,
     costUSD: number | null,
     planUnits: number | null,
+    model: string = m.config.model,
   ): Promise<void> {
     if (text) await m.memory.append({ role: 'assistant', content: text });
-    const record = makeUsageRecord(runId, provider, m.config.model, tokensIn, tokensOut, costUSD, planUnits, Date.now());
+    const record = makeUsageRecord(runId, provider, model, tokensIn, tokensOut, costUSD, planUnits, Date.now());
     await m.usage.record(record);
     this.emit({ type: 'usage_update', record });
     this.emit({ type: 'done', runId });
