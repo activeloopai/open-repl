@@ -56,66 +56,57 @@ function result(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
 }
 
-export function buildOpenReplMcpServer(deps: ToolDeps) {
+/**
+ * The tool handlers, extracted from the MCP wiring so they can be unit-tested
+ * directly over a real Workspace (buildOpenReplMcpServer just wraps these with
+ * `tool()`). Each returns the MCP CallToolResult shape.
+ */
+export function openReplToolHandlers(deps: ToolDeps) {
   const { workspace } = deps;
+  return {
+    read_file: async (args: { path: string }) => {
+      const content = await workspace.readFile(args.path);
+      return result({ path: args.path, content: content.slice(0, 20000) });
+    },
+    write_file: async (args: { path: string; content?: string }) => {
+      await workspace.writeFile(args.path, args.content ?? '');
+      return result({ ok: true, path: args.path });
+    },
+    list_dir: async (args: { path?: string }) => {
+      return result({ entries: await workspace.listDir(args.path ?? '.') });
+    },
+    search_repo: async (args: { query: string }) => {
+      return result({ matches: await workspace.search(args.query) });
+    },
+    run_command: async (args: { command: string }) => {
+      if (!isCommandAllowed(args.command, deps.commandAllowlist)) {
+        return result({ error: `Command blocked by allowlist: ${args.command}` });
+      }
+      const { code, output } = await deps.runCommand(args.command);
+      return result({ exitCode: code, output: output.slice(-8000) });
+    },
+    run_app: async () => {
+      const r = await deps.runApp();
+      return result(r.ok ? { ok: true, url: r.url, note: 'app started successfully' } : { ok: false, error: r.logs });
+    },
+  };
+}
+
+export function buildOpenReplMcpServer(deps: ToolDeps) {
+  const h = openReplToolHandlers(deps);
   return createSdkMcpServer({
     name: MCP_SERVER_NAME,
     tools: [
-      tool(
-        'read_file',
-        'Read a UTF-8 text file from the workspace.',
-        { path: z.string().describe('Path relative to workspace root') },
-        async (args) => {
-          const content = await workspace.readFile(args.path);
-          return result({ path: args.path, content: content.slice(0, 20000) });
-        },
-      ),
-      tool(
-        'write_file',
-        'Create or overwrite a text file in the workspace. The user sees it update live.',
-        { path: z.string(), content: z.string() },
-        async (args) => {
-          await workspace.writeFile(args.path, args.content ?? '');
-          return result({ ok: true, path: args.path });
-        },
-      ),
-      tool(
-        'list_dir',
-        'List files and folders in a workspace directory.',
-        { path: z.string().optional().describe('Defaults to "."') },
-        async (args) => {
-          return result({ entries: await workspace.listDir(args.path ?? '.') });
-        },
-      ),
-      tool(
-        'search_repo',
-        'Search file contents for a literal substring across the workspace.',
-        { query: z.string() },
-        async (args) => {
-          return result({ matches: await workspace.search(args.query) });
-        },
-      ),
-      tool(
-        'run_command',
-        'Run a shell command in the workspace and return its output. Use for installs, builds, tests.',
-        { command: z.string() },
-        async (args) => {
-          const command = args.command;
-          if (!isCommandAllowed(command, deps.commandAllowlist)) {
-            return result({ error: `Command blocked by allowlist: ${command}` });
-          }
-          const { code, output } = await deps.runCommand(command);
-          return result({ exitCode: code, output: output.slice(-8000) });
-        },
-      ),
+      tool('read_file', 'Read a UTF-8 text file from the workspace.', { path: z.string().describe('Path relative to workspace root') }, h.read_file),
+      tool('write_file', 'Create or overwrite a text file in the workspace. The user sees it update live.', { path: z.string(), content: z.string() }, h.write_file),
+      tool('list_dir', 'List files and folders in a workspace directory.', { path: z.string().optional().describe('Defaults to "."') }, h.list_dir),
+      tool('search_repo', 'Search file contents for a literal substring across the workspace.', { query: z.string() }, h.search_repo),
+      tool('run_command', 'Run a shell command in the workspace and return its output. Use for installs, builds, tests.', { command: z.string() }, h.run_command),
       tool(
         'run_app',
         'Start the app and report whether it actually runs. Returns {ok:true,url} if it serves, or {ok:false,error} with the crash output/traceback. After writing code, call this to verify; if it fails, read the error, fix the files, and call run_app again until it runs.',
         {},
-        async () => {
-          const r = await deps.runApp();
-          return result(r.ok ? { ok: true, url: r.url, note: 'app started successfully' } : { ok: false, error: r.logs });
-        },
+        h.run_app,
       ),
     ],
   });
