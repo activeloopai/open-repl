@@ -111,7 +111,11 @@ export class Session {
             m.config.models = { ...defaults.models };
           }
           await saveConfig(m.dir, m.config);
-          this.emit({ type: 'provider_status', provider: cmd.provider, state: 'ok' });
+          // Report actual readiness, not a blanket 'ok': OpenRouter/Codex need
+          // credentials, so the UI should reflect whether the switched-to
+          // provider can actually run.
+          const ready = await m.registry.get(cmd.provider).isReady();
+          this.emit({ type: 'provider_status', provider: cmd.provider, state: ready ? 'ok' : 'error' });
           return void (await this.sendModels(m));
         }
         case 'list_models':
