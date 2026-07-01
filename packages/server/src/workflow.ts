@@ -17,7 +17,7 @@ const BACKEND_RE = /^(dev:)?(server|backend|api|be)$/i;
 const FRONTEND_RE = /^(dev:)?(web|client|frontend|fe|ui)$/i;
 
 /**
- * Figure out how to run the user's app — like Replit/Lovable run configs.
+ * Figure out how to run the user's app — auto-detected run configurations.
  * Priority: user-defined .openrepl/workflows.json → auto-detected BE+FE pair →
  * single dev/start script → static index.html.
  */

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "version": "0.1.0",
-  "description": "OpenREPL — an open-source, self-hosted Replit alternative. Bring your own model.",
+  "description": "OpenREPL — an open-source, self-hosted AI coding workspace. Bring your own model.",
   "workspaces": [
     "packages/shared",
     "packages/server",
@@ -17,7 +17,8 @@
     "dev:web": "vite packages/web",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.base.json --noEmit"
+    "typecheck": "tsc -p tsconfig.base.json --noEmit",
+    "dup": "jscpd"
   },
   "devDependencies": {
     "tsx": "^4.19.2",
@@ -25,6 +26,7 @@
     "vitest": "^2.1.8",
     "@vitest/coverage-v8": "^2.1.8",
     "vite": "^6.0.5",
-    "@vitejs/plugin-react": "^4.3.4"
+    "@vitejs/plugin-react": "^4.3.4",
+    "jscpd": "^4.0.5"
   }
 }

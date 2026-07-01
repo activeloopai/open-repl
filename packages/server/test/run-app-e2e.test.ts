@@ -15,14 +15,22 @@ describe('Run app (static) end-to-end through the preview proxy', () => {
     const dir = await tmpWorkspace();
     await fs.writeFile(path.join(dir, 'index.html'), '<!doctype html><h1>MY-APP-LIVE</h1>');
 
-    const server = await createServer({ workspaceDir: dir, port: 4740 });
+    // Omit port so createServer's findFreePort picks a free one (collision-safe
+    // under parallel runs); server.url reflects the actual bound port.
+    const server = await createServer({
+      initialProject: dir,
+      registryPath: path.join(dir, 'projects.json'),
+      projectsRoot: dir,
+    });
     const ws = new WebSocket(server.url.replace('http', 'ws') + '/ws');
     try {
       await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error('timeout waiting for app running')), 10000);
-        ws.on('open', () => ws.send(JSON.stringify({ type: 'run_app' })));
+        const t = setTimeout(() => reject(new Error('timeout waiting for app running')), 20000);
         ws.on('message', (raw) => {
           const e = JSON.parse(raw.toString()) as UiEvent;
+          // Wait for the project to be mounted (ready) before asking it to run —
+          // the server mounts the initialProject asynchronously on connect.
+          if (e.type === 'ready') ws.send(JSON.stringify({ type: 'run_app' }));
           if (e.type === 'app_status' && e.state === 'running') {
             clearTimeout(t);
             resolve();
@@ -42,5 +50,5 @@ describe('Run app (static) end-to-end through the preview proxy', () => {
       ws.close();
       await server.close();
     }
-  });
+  }, 30000);
 });

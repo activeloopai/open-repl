@@ -97,6 +97,7 @@ function ProviderPicker({ provider }: { provider: string }) {
       value={provider}
       onChange={(e) => store.send({ type: 'set_provider', provider: e.target.value as never })}
     >
+      <option value="claude">Claude (sub)</option>
       <option value="openrouter">OpenRouter</option>
       <option value="codex">Codex (sub)</option>
     </select>

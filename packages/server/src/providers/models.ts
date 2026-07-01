@@ -3,10 +3,19 @@ import type { ModelInfo, ProviderId } from '@openrepl/shared';
 /**
  * List selectable models for a provider. For OpenRouter we hit the public
  * /models catalog and keep only models that support tool calling (the agent
- * loop needs it). For Codex/demo we return a small static set.
+ * loop needs it). For Claude/Codex we return a small static set.
  */
 export async function listModels(provider: ProviderId): Promise<ModelInfo[]> {
   if (provider === 'openrouter') return listOpenRouterModels();
+  if (provider === 'claude') {
+    // Claude Agent SDK model aliases (what AgentDefinition.model accepts).
+    return [
+      { id: 'haiku', name: 'Claude Haiku (cheap)' },
+      { id: 'sonnet', name: 'Claude Sonnet (balanced)' },
+      { id: 'opus', name: 'Claude Opus (strong)' },
+      { id: 'fable', name: 'Claude Fable (max)' },
+    ];
+  }
   // codex (ChatGPT subscription) — static set
   return [
     { id: 'gpt-5.1', name: 'GPT-5.1' },

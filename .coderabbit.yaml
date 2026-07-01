@@ -1,0 +1,41 @@
+# CodeRabbit configuration — https://docs.coderabbit.ai/getting-started/yaml-configuration
+# Repo-level config for activeloopai/open-repl. Requires the CodeRabbit GitHub
+# App to be installed on the repo/org for reviews to run.
+language: en-US
+reviews:
+  profile: chill # fewer low-value nitpicks; "assertive" is the only alternative
+  request_changes_workflow: false
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    base_branches: ["main"]
+  # Don't spend review on generated / vendored / lock artifacts.
+  path_filters:
+    - "!**/package-lock.json"
+    - "!**/dist/**"
+    - "!**/coverage/**"
+    - "!.test-tmp/**"
+  # Repo-specific context so CodeRabbit stops re-raising known by-design items.
+  path_instructions:
+    - path: "packages/server/src/agent/claude/**"
+      instructions: >
+        This is the Claude Agent SDK engine. A deliberate, e2e-validated design
+        constraint: an in-process createSdkMcpServer is only reachable from the
+        MAIN thread — delegated subagents' MCP calls return "Stream closed", so
+        the ORCHESTRATOR does all file work via the MCP tools and the
+        planner/reviewer subagents use the SDK's built-in read-only tools. Do
+        NOT suggest giving subagents the MCP tools, nor moving run_app off the
+        orchestrator. The read-only loop guard in canUseTool is intentional.
+    - path: "packages/server/src/agent/claude/tools.ts"
+      instructions: >
+        The run_command allowlist is a coarse prefix guard, not a sandbox — this
+        is documented in the file. Don't re-flag that an allowed binary can
+        re-shell; true isolation is OS-level and deliberately deferred.
+    - path: "packages/server/src/agent/{orchestrator,subagents,runtime}.ts"
+      instructions: >
+        This is the legacy Vercel AI SDK path, intentionally kept for the
+        OpenRouter/Codex providers. Do not suggest deleting it as dead code.
+    - path: "packages/**/*.test.ts"
+      instructions: >
+        Prefer asserting on specific values (paths, tool names, model tiers)
+        over generic substrings.

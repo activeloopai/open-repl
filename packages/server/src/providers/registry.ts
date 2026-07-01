@@ -2,17 +2,30 @@ import type { ModelProvider } from './types.js';
 import type { ProviderId } from '@openrepl/shared';
 import { OpenRouterProvider } from './openrouter.js';
 import { CodexProvider } from './codex-oauth.js';
+import { ClaudeProvider } from './claude.js';
 
 export class ProviderRegistry {
   private providers: Record<ProviderId, ModelProvider>;
+  private claude: ClaudeProvider;
 
   constructor(getSecret: (key: string) => Promise<string | undefined>) {
+    // Subscription default with fallback to ANTHROPIC_API_KEY (Secrets → env),
+    // same pattern as OPENROUTER_API_KEY above (PRD §5).
+    this.claude = new ClaudeProvider(() =>
+      getSecret('ANTHROPIC_API_KEY').then((v) => v ?? process.env.ANTHROPIC_API_KEY),
+    );
     this.providers = {
       openrouter: new OpenRouterProvider(() =>
         getSecret('OPENROUTER_API_KEY').then((v) => v ?? process.env.OPENROUTER_API_KEY),
       ),
       codex: new CodexProvider(),
+      claude: this.claude,
     };
+  }
+
+  /** ANTHROPIC_API_KEY for the Claude engine; `undefined` ⇒ use the subscription. */
+  claudeApiKey(): Promise<string | undefined> {
+    return this.claude.getApiKey();
   }
 
   get(id: ProviderId): ModelProvider {

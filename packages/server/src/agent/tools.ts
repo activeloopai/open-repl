@@ -7,6 +7,8 @@ export interface ToolDeps {
   commandAllowlist: string[];
   /** Start the app, observe, stop — the "run" half of the run-and-fix loop. */
   runApp: () => Promise<{ ok: boolean; url?: string; logs: string }>;
+  /** Aborted when the user hits Stop — cancels in-flight command/probe work. */
+  signal?: AbortSignal;
 }
 
 function allowed(command: string, allowlist: string[]): boolean {

@@ -20,7 +20,7 @@ export interface WorkflowStep {
   preview?: boolean;
 }
 
-/** A named run configuration — like Replit/Lovable workflows. Runs steps together. */
+/** A named run configuration. Runs its steps together. */
 export interface Workflow {
   name: string;
   steps: WorkflowStep[];
@@ -40,7 +40,7 @@ export interface FileTreeNode {
   children?: FileTreeNode[];
 }
 
-export type ProviderId = 'openrouter' | 'codex';
+export type ProviderId = 'openrouter' | 'codex' | 'claude';
 
 /** Roles that can each be assigned their own model. 'default' is the fallback. */
 export type AgentRole = 'default' | 'orchestrator' | 'planner' | 'coder' | 'reviewer';

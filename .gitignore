@@ -9,3 +9,14 @@ dist/
 coverage/
 packages/web/dist/
 .test-tmp/
+jscpd-report/
+
+# Internal / agent-authored docs — never committed to the public repo (kept local only)
+.internal/
+PRD-*.md
+BACKLOG.md
+IMPLEMENTATION.md
+NIGHT-LOG.md
+PLAN.md
+STATUS.md
+todo_list.md

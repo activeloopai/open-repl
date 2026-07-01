@@ -9,14 +9,15 @@ import { PreviewManager } from './preview.js';
 import { detectWorkflows, WorkflowManager } from './workflow.js';
 import { ProviderRegistry } from './providers/registry.js';
 import { ProjectRegistry } from './projects.js';
-import { buildTools } from './agent/tools.js';
+import { buildTools, type ToolDeps } from './agent/tools.js';
 import { probeApp } from './agent/probe.js';
 import { runMultiAgent } from './agent/orchestrator.js';
+import { ClaudeAgentEngine } from './agent/claude/engine.js';
 import { BudgetGuard } from './agent/guards.js';
 import type { AgentRun, ModelProvider } from './providers/types.js';
 import { runRole } from './agent/runtime.js';
 import { listModels } from './providers/models.js';
-import { loadConfig, saveConfig, type OpenReplConfig } from './config.js';
+import { loadConfig, saveConfig, PROVIDER_DEFAULTS, type OpenReplConfig } from './config.js';
 
 /** Everything bound to one open project. Null when no project is open. */
 interface Mount {
@@ -99,11 +100,24 @@ export class Session {
           return void (await this.sendWorkflows(m));
         case 'run_workflow':
           return void (await this.runWorkflow(m, cmd.name));
-        case 'set_provider':
+        case 'set_provider': {
           m.config.provider = cmd.provider;
+          // Swap to provider-appropriate model defaults: the Claude SDK aliases
+          // (sonnet/opus/haiku) are not valid OpenRouter/Codex model ids, so a
+          // bare provider switch would otherwise send "sonnet" to OpenRouter.
+          const defaults = PROVIDER_DEFAULTS[cmd.provider];
+          if (defaults) {
+            m.config.model = defaults.model;
+            m.config.models = { ...defaults.models };
+          }
           await saveConfig(m.dir, m.config);
-          this.emit({ type: 'provider_status', provider: cmd.provider, state: 'ok' });
+          // Report actual readiness, not a blanket 'ok': OpenRouter/Codex need
+          // credentials, so the UI should reflect whether the switched-to
+          // provider can actually run.
+          const ready = await m.registry.get(cmd.provider).isReady();
+          this.emit({ type: 'provider_status', provider: cmd.provider, state: ready ? 'ok' : 'error' });
           return void (await this.sendModels(m));
+        }
         case 'list_models':
           return void (await this.sendModels(m));
         case 'set_model': {
@@ -283,15 +297,52 @@ export class Session {
     this.emit({ type: 'agent_start', runId });
 
     const budget = new BudgetGuard(m.config.maxTokens);
-    const tools = buildTools({
+    // The exact deps both engines share: writes through workspace.writeFile,
+    // commands through CommandRunner, app launch through probeApp (PRD §4.3).
+    const deps: ToolDeps = {
       workspace: m.workspace,
       commandAllowlist: m.config.commandAllowlist,
+      // Thread the Stop signal through so a stopped turn cancels in-flight
+      // installs/tests (CommandRunner) and app probes (probeApp).
+      signal: controller.signal,
       runCommand: async (command) => {
-        const code = await m.shell.run(command);
+        const code = await m.shell.run(command, controller.signal);
         return { code, output: m.shell.lastOutput };
       },
-      runApp: () => probeApp(m.dir, () => m.secrets.all()),
-    });
+      runApp: () => probeApp(m.dir, () => m.secrets.all(), 12000, controller.signal),
+    };
+
+    // Claude provider → Claude Agent SDK engine (PRD §4.1). Same UiEvent stream
+    // and RunResult feeding makeUsageRecord; the existing AbortController drives
+    // the engine's own abort so the Stop button still kills a run (PRD §4.4).
+    if (m.config.provider === 'claude') {
+      try {
+        const engine = new ClaudeAgentEngine();
+        const result = await engine.run({
+          runId,
+          messages: m.memory.history(),
+          config: m.config,
+          deps,
+          signal: controller.signal,
+          emit: (e) => this.emit(e),
+          apiKey: await m.registry.claudeApiKey(),
+        });
+        budget.add(result.tokensIn, result.tokensOut);
+        // Record under the orchestrator tier (the main coding model), not the
+        // generic config.model, so the dashboard's by-model accounting reflects
+        // what actually ran the turn.
+        const claudeModel = m.config.models?.orchestrator || m.config.model;
+        await this.finishRun(m, runId, 'claude', result.text, result.tokensIn, result.tokensOut, result.costUSD, result.planUnits, claudeModel);
+      } catch (e) {
+        this.emit({ type: 'error', scope: 'agent', message: e instanceof Error ? e.message : String(e) });
+        this.emit({ type: 'done', runId });
+      } finally {
+        this.activeRun = null;
+      }
+      return;
+    }
+
+    const tools = buildTools(deps);
 
     const run: AgentRun = {
       runId,
@@ -351,9 +402,10 @@ export class Session {
     tokensOut: number,
     costUSD: number | null,
     planUnits: number | null,
+    model: string = m.config.model,
   ): Promise<void> {
     if (text) await m.memory.append({ role: 'assistant', content: text });
-    const record = makeUsageRecord(runId, provider, m.config.model, tokensIn, tokensOut, costUSD, planUnits, Date.now());
+    const record = makeUsageRecord(runId, provider, model, tokensIn, tokensOut, costUSD, planUnits, Date.now());
     await m.usage.record(record);
     this.emit({ type: 'usage_update', record });
     this.emit({ type: 'done', runId });

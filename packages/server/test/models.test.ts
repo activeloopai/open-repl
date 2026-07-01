@@ -32,9 +32,22 @@ describe('listModels', () => {
     expect(models.length).toBeGreaterThan(0);
   });
 
-  it('returns static lists for codex and demo', async () => {
-    expect((await listModels('codex')).length).toBeGreaterThan(0);
-    expect(await listModels('demo')).toEqual([{ id: 'demo', name: 'Demo (offline)' }]);
+  it('returns the exact static catalog for codex', async () => {
+    expect(await listModels('codex')).toEqual([
+      { id: 'gpt-5.1', name: 'GPT-5.1' },
+      { id: 'gpt-5.1-codex', name: 'GPT-5.1 Codex' },
+      { id: 'gpt-5-mini', name: 'GPT-5 mini' },
+      { id: 'o4-mini', name: 'o4-mini' },
+    ]);
+  });
+
+  it('returns the exact static catalog for claude (SDK aliases)', async () => {
+    expect(await listModels('claude')).toEqual([
+      { id: 'haiku', name: 'Claude Haiku (cheap)' },
+      { id: 'sonnet', name: 'Claude Sonnet (balanced)' },
+      { id: 'opus', name: 'Claude Opus (strong)' },
+      { id: 'fable', name: 'Claude Fable (max)' },
+    ]);
   });
 });
 

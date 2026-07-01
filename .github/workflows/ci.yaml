@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  # Run on every PR regardless of base branch.
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-test:
+    name: Typecheck and test
+    runs-on: ubuntu-latest
+    # pull-requests: write lets the coverage-report action post its PR comment.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test with coverage
+        # Per-file thresholds (statements/branches/functions/lines) live in
+        # vitest.config.ts under coverage.thresholds — vitest exits non-zero if
+        # a listed file regresses below its bar, failing the job.
+        run: npx vitest run --coverage
+      - name: Coverage summary (four categories)
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+              const t = require('./coverage/coverage-summary.json').total;
+              const f = (m) => m.pct.toFixed(2) + '% (' + m.covered + '/' + m.total + ')';
+              const out = [
+                '### Test coverage',
+                '',
+                '| Category | Coverage |',
+                '|----------|----------|',
+                '| Statements | ' + f(t.statements) + ' |',
+                '| Branches | ' + f(t.branches) + ' |',
+                '| Functions | ' + f(t.functions) + ' |',
+                '| Lines | ' + f(t.lines) + ' |',
+              ].join('\n');
+              require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, out + '\n');
+              console.log(out);
+            "
+          fi
+      - name: Report coverage on the PR
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
+          json-final-path: coverage/coverage-final.json
+      - name: Build web
+        run: npm run build:web
+
+  duplication:
+    # Code-duplication regression guard (jscpd). Separate job so the PR checks
+    # table shows a dedicated pass/fail row. Threshold lives in .jscpd.json.
+    name: Duplication check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run jscpd
+        run: npm run dup
+      - name: Upload jscpd report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jscpd-report
+          path: jscpd-report/
+          if-no-files-found: ignore
