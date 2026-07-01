@@ -34,7 +34,7 @@ export async function probeApp(
   const env = { ...process.env, ...(await getEnv()) } as Record<string, string>;
 
   if (det.install) {
-    const r = await runOnce(dir, det.install, env);
+    const r = await runOnce(dir, det.install, env, signal);
     logs += r.output;
     if (r.code !== 0) return { ok: false, logs: trim(logs + `\n[dependency install failed: ${det.install}]`) };
   }
@@ -75,14 +75,42 @@ function trim(s: string, max = 3000): string {
   return s.length > max ? '…' + s.slice(-max) : s;
 }
 
-function runOnce(cwd: string, command: string, env: Record<string, string>): Promise<{ code: number; output: string }> {
+function runOnce(
+  cwd: string,
+  command: string,
+  env: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
-    const p = spawn(command, { cwd, env, shell: true, stdio: 'pipe' }) as ChildProcessWithoutNullStreams;
+    // detached so Stop can signal the whole install tree (npm/pip), not just the shell.
+    const p = spawn(command, { cwd, env, shell: true, stdio: 'pipe', detached: true }) as ChildProcessWithoutNullStreams;
     let out = '';
+    let aborted = false;
     const grab = (b: Buffer) => (out += b.toString());
+    const onAbort = () => {
+      aborted = true;
+      try {
+        if (p.pid) process.kill(-p.pid, 'SIGTERM');
+        else p.kill('SIGTERM');
+      } catch {
+        /* already gone */
+      }
+    };
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
+    }
+    const settle = (code: number) => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve({ code, output: out });
+    };
     p.stdout.on('data', grab);
     p.stderr.on('data', grab);
-    p.on('close', (code) => resolve({ code: code ?? 0, output: out }));
-    p.on('error', (e) => resolve({ code: 1, output: out + String(e) }));
+    // A signal-killed install reports code=null — don't map that to 0 (success).
+    p.on('close', (code) => settle(code ?? (aborted ? 130 : 1)));
+    p.on('error', (e) => {
+      out += String(e);
+      settle(1);
+    });
   });
 }

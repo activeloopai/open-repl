@@ -42,7 +42,10 @@ export class CommandRunner {
   async run(command: string, signal?: AbortSignal): Promise<number> {
     const env = { ...process.env, ...(await this.env()) };
     return new Promise((resolve) => {
-      const p = spawn(command, { cwd: this.cwd, env, shell: true, stdio: 'pipe' }) as ChildProcessWithoutNullStreams;
+      // detached: true makes the child a process-group leader so we can signal
+      // the WHOLE tree on abort — `shell: true` spawns a subshell, and killing
+      // only the shell leaves the real command (npm/pip/dev server) running.
+      const p = spawn(command, { cwd: this.cwd, env, shell: true, stdio: 'pipe', detached: true }) as ChildProcessWithoutNullStreams;
       let buf = '';
       const emit = (chunk: Buffer) => {
         const s = chunk.toString();
@@ -55,9 +58,14 @@ export class CommandRunner {
       const onAbort = () => {
         aborted = true;
         try {
-          p.kill('SIGTERM');
+          if (p.pid) process.kill(-p.pid, 'SIGTERM'); // negative pid = the group
+          else p.kill('SIGTERM');
         } catch {
-          /* already gone */
+          try {
+            p.kill('SIGTERM');
+          } catch {
+            /* already gone */
+          }
         }
       };
       if (signal) {
