@@ -16,6 +16,11 @@ export default defineConfig({
       // categories (statements/branches/functions/lines); html for local drill-down.
       reporter: ['text', 'text-summary', 'json', 'json-summary', 'html'],
       reportsDirectory: 'coverage',
+      // Scope: the packages with unit tests (server logic + shared types).
+      // web/src (React UI) and cli/src (thin launcher) are intentionally
+      // excluded — they have no unit-test harness, so including them would
+      // report ~0% and drag the total down without signalling a real gap. Add
+      // a package here once it has tests.
       include: ['packages/server/src/**', 'packages/shared/src/**'],
       exclude: ['**/*.test.ts', '**/*.d.ts'],
       // Per-file thresholds on the well-tested new modules — like hivemind, the
