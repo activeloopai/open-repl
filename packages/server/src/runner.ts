@@ -51,7 +51,9 @@ export class CommandRunner {
       };
       // Stop cancels in-flight work: kill the child process group on abort so a
       // stopped turn does not leave installs/tests running in the workspace.
+      let aborted = false;
       const onAbort = () => {
+        aborted = true;
         try {
           p.kill('SIGTERM');
         } catch {
@@ -69,7 +71,10 @@ export class CommandRunner {
       };
       p.stdout.on('data', emit);
       p.stderr.on('data', emit);
-      p.on('close', (code) => done(code ?? 0));
+      // On a signal kill, `close` reports code=null — never map that to 0, or a
+      // cancelled command would look like it succeeded. Report non-zero
+      // (130 = terminated) so callers see the run did not complete.
+      p.on('close', (code) => done(code ?? (aborted ? 130 : 1)));
       p.on('error', (err) => {
         this.onData(`\n[runner error] ${err.message}\n`);
         done(1);
