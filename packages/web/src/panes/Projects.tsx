@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { store, useStore } from '../store.js';
+import { IconPlus, IconFolder, IconChevronLeft, IconChevronRight } from '../icons.js';
 
 export function ProjectsSidebar({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const projects = useStore((s) => s.projects);
@@ -20,7 +21,7 @@ export function ProjectsSidebar({ open, onToggle }: { open: boolean; onToggle: (
   if (!open) {
     return (
       <div className="projects-rail collapsed" onClick={onToggle} title="Projects">
-        <span className="rail-icon">▸</span>
+        <IconChevronRight />
         <span className="rail-label">Projects</span>
       </div>
     );
@@ -31,7 +32,7 @@ export function ProjectsSidebar({ open, onToggle }: { open: boolean; onToggle: (
       <div className="projects-head">
         <strong>Projects</strong>
         <button className="ghost" onClick={onToggle} title="Collapse">
-          ◂
+          <IconChevronLeft />
         </button>
       </div>
 
@@ -44,8 +45,13 @@ export function ProjectsSidebar({ open, onToggle }: { open: boolean; onToggle: (
             title={p.path}
             onClick={() => store.send({ type: 'open_project', path: p.path })}
           >
-            <div className="project-name">{p.name}</div>
-            <div className="project-path muted small">{p.path}</div>
+            <span className="project-icon">
+              <IconFolder />
+            </span>
+            <div className="project-body">
+              <div className="project-name">{p.name}</div>
+              <div className="project-path muted small">{p.path}</div>
+            </div>
           </li>
         ))}
       </ul>
@@ -63,7 +69,8 @@ export function ProjectsSidebar({ open, onToggle }: { open: boolean; onToggle: (
         </div>
       ) : (
         <button className="new-project" onClick={() => setCreating(true)}>
-          ＋ New project
+          <IconPlus />
+          New project
         </button>
       )}
     </aside>

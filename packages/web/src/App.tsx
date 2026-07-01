@@ -8,16 +8,17 @@ import { Usage } from './panes/Usage.js';
 import { Secrets } from './panes/Secrets.js';
 import { Models } from './panes/Models.js';
 import { ProjectsSidebar } from './panes/Projects.js';
+import { IconFiles, IconPreview, IconTerminal, IconModels, IconUsage, IconSecrets } from './icons.js';
 
 type Tab = 'editor' | 'preview' | 'terminal' | 'models' | 'usage' | 'secrets';
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'editor', label: 'Files' },
-  { id: 'preview', label: 'Preview' },
-  { id: 'terminal', label: 'Terminal' },
-  { id: 'models', label: 'Models' },
-  { id: 'usage', label: 'Usage' },
-  { id: 'secrets', label: 'Secrets' },
+const TABS: { id: Tab; label: string; icon: () => JSX.Element }[] = [
+  { id: 'editor', label: 'Files', icon: IconFiles },
+  { id: 'preview', label: 'Preview', icon: IconPreview },
+  { id: 'terminal', label: 'Terminal', icon: IconTerminal },
+  { id: 'models', label: 'Models', icon: IconModels },
+  { id: 'usage', label: 'Usage', icon: IconUsage },
+  { id: 'secrets', label: 'Secrets', icon: IconSecrets },
 ];
 
 export function App() {
@@ -32,11 +33,19 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">OpenREPL</span>
-        <span className="muted">{activeProject ?? 'no project'}</span>
+        <span className="brand">
+          <span className="brand-mark">R</span>
+          OpenREPL
+        </span>
+        <span className={`project-pill ${activeProject ? '' : 'none'}`}>
+          {activeProject ? activeProject.split('/').pop() : 'no project'}
+        </span>
         <span className="spacer" />
         {activeProject && <ProviderPicker provider={provider} />}
-        <span className={`dot ${connected ? 'ok' : 'bad'}`} title={connected ? 'connected' : 'disconnected'} />
+        <span className="conn">
+          <span className={`dot ${connected ? 'ok' : 'bad'}`} />
+          {connected ? 'connected' : 'offline'}
+        </span>
       </header>
       {notice && <div className="notice">{notice}</div>}
       <div className="split">
@@ -50,6 +59,7 @@ export function App() {
               <nav className="tabs">
                 {TABS.map((t) => (
                   <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+                    <t.icon />
                     {t.label}
                   </button>
                 ))}

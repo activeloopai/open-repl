@@ -85,7 +85,7 @@ function TreeNode({ node, depth }: { node: FileTreeNode; depth: number }) {
     return (
       <li>
         <div className="node dir" style={{ paddingLeft: depth * 12 }} onClick={() => setOpen(!open)}>
-          {open ? '▾' : '▸'} {node.name}
+          <span className="tw">{open ? '▾' : '▸'}</span> {node.name}
         </div>
         {open && node.children && <TreeView nodes={node.children} depth={depth + 1} />}
       </li>
