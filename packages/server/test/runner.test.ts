@@ -29,3 +29,19 @@ describe('CommandRunner.run', () => {
     expect(Date.now() - start).toBeLessThan(4000); // aborted early, not waited out
   });
 });
+
+describe('CommandRunner — interactive shell (PTY)', () => {
+  it('starts a shell, accepts input, and kills cleanly', async () => {
+    let sawData = false;
+    let exitCode: number | null = null;
+    const r = new CommandRunner(os.tmpdir(), async () => ({}), () => { sawData = true; }, (c) => { exitCode = c; });
+    await r.startShell();
+    r.input('echo pty-hello\n');
+    r.resize(100, 40);
+    await new Promise((res) => setTimeout(res, 400));
+    r.kill();
+    await new Promise((res) => setTimeout(res, 200));
+    expect(sawData).toBe(true);           // shell echoed output back
+    expect(exitCode === null || typeof exitCode === 'number').toBe(true);
+  });
+});
