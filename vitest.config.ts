@@ -31,6 +31,8 @@ export default defineConfig({
       thresholds: {
         'packages/server/src/agent/claude/roles.ts': { statements: 90, branches: 80, functions: 90, lines: 90 },
         'packages/server/src/agent/claude/map-messages.ts': { statements: 85, branches: 80, functions: 90, lines: 85 },
+        'packages/server/src/providers/claude.ts': { statements: 90, branches: 80, functions: 90, lines: 90 },
+        'packages/server/src/runner.ts': { statements: 78, branches: 70, functions: 75, lines: 78 },
       },
     },
   },
