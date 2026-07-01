@@ -1,13 +1,16 @@
+import { existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import type { LanguageModel } from 'ai';
 import type { ModelProvider } from './types.js';
 
 /**
  * Claude provider — backed by the Claude Agent SDK via `ClaudeAgentEngine`
  * (PRD §5), NOT the Vercel AI-SDK model path. Auth is subscription-first: the
- * SDK reads the local Claude credential when no API key is set, so `isReady` is
- * always true. An `ANTHROPIC_API_KEY` (workspace .env via Secrets, or env) is
- * the pay-as-you-go fallback, surfaced to the engine via {@link getApiKey} —
- * its presence flips usage from plan units to real $ inside the engine.
+ * SDK reads the local Claude credential when no API key is set. An
+ * `ANTHROPIC_API_KEY` (workspace .env via Secrets, or env) is the pay-as-you-go
+ * fallback, surfaced to the engine via {@link getApiKey} — its presence flips
+ * usage from plan units to real $ inside the engine.
  *
  * Because the turn runs through the engine, `getModel` is never called on this
  * path and throws if it is (it has no AI-SDK model to build).
@@ -21,9 +24,15 @@ export class ClaudeProvider implements ModelProvider {
 
   constructor(private getKey: () => Promise<string | undefined>) {}
 
-  /** Subscription is the default credential, so a run can always be attempted. */
+  /**
+   * Ready when SOME credential exists: an API key (Secrets/env), a subscription
+   * OAuth token, or the local Claude CLI credential. Otherwise report not-ready
+   * so the UI can prompt for auth up front instead of failing at run start.
+   */
   async isReady(): Promise<boolean> {
-    return true;
+    if (await this.getKey()) return true;
+    if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return true;
+    return existsSync(path.join(os.homedir(), '.claude', '.credentials.json'));
   }
 
   /**
