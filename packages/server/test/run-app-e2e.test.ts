@@ -15,11 +15,12 @@ describe('Run app (static) end-to-end through the preview proxy', () => {
     const dir = await tmpWorkspace();
     await fs.writeFile(path.join(dir, 'index.html'), '<!doctype html><h1>MY-APP-LIVE</h1>');
 
+    // Omit port so createServer's findFreePort picks a free one (collision-safe
+    // under parallel runs); server.url reflects the actual bound port.
     const server = await createServer({
       initialProject: dir,
       registryPath: path.join(dir, 'projects.json'),
       projectsRoot: dir,
-      port: 4740,
     });
     const ws = new WebSocket(server.url.replace('http', 'ws') + '/ws');
     try {
