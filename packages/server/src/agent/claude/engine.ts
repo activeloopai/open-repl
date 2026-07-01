@@ -29,7 +29,12 @@ const MCP_TOOLS = ['read_file', 'write_file', 'list_dir', 'search_repo', 'run_co
 // Bash would let a "read-only" reviewer run shell commands under the default
 // allow-all allowlist.
 const BUILTIN_TOOLS = ['Read', 'Glob', 'Grep'] as const;
-const allowedTools = ['Agent', ...BUILTIN_TOOLS, ...MCP_TOOLS.map((n) => `mcp__${MCP_SERVER}__${n}`)];
+// NOTE: we deliberately do NOT put these in `allowedTools`. Tools in
+// `allowedTools` are auto-approved and bypass `canUseTool`, which would make the
+// read-only loop guard and the run_command allowlist in canUseTool ineffective.
+// With an empty allowlist, EVERY tool call flows through canUseTool (our single
+// gate: permit-set + loop guard + command allowlist), which auto-allows without
+// any interactive prompt in headless mode.
 
 /** Read-only tools that are safe to dedupe: identical repeated calls add nothing. */
 const READONLY_FOR_LOOP_GUARD = new Set(['Read', 'Glob', 'Grep', 'read_file', 'list_dir', 'search_repo']);
@@ -123,11 +128,15 @@ export class ClaudeAgentEngine implements AgentEngine {
       // process cwd and the app is written into the wrong directory.
       cwd: deps.workspace.root,
       // Isolate from any host config (PRD §4.3 / acceptance §6.6): settingSources
-      // [] drops ~/.claude settings, and strictMcpConfig ignores host/project
-      // .mcp.json so ONLY our in-process openrepl server is connected.
+      // [] drops ~/.claude settings, strictMcpConfig ignores host/project
+      // .mcp.json so ONLY our in-process openrepl server is connected, and
+      // persistSession:false stops the SDK writing prompt/tool transcripts under
+      // the host Claude config — project content stays inside the workspace.
       settingSources: [],
       strictMcpConfig: true,
-      allowedTools,
+      persistSession: false,
+      // Empty on purpose — canUseTool is the single gate (see BUILTIN_TOOLS note).
+      allowedTools: [],
       canUseTool: makeCanUseTool(config.commandAllowlist),
       maxTurns: config.maxSteps,
       // The subprocess is Anthropic's own claude binary, which needs the host
