@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "version": "0.1.0",
-  "description": "OpenREPL — an open-source, self-hosted Replit alternative. Bring your own model.",
+  "description": "OpenREPL — an open-source, self-hosted AI coding workspace. Bring your own model.",
   "workspaces": [
     "packages/shared",
     "packages/server",

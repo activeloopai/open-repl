@@ -30,7 +30,7 @@ npx tsx packages/cli/src/index.ts /path/to/project --no-open
   (run → observe → fix loop).
 - **Bring your own model**:
   - **Claude** — runs the agent layer on Anthropic's Claude Agent SDK; cheap roles on Haiku,
-    hard roles on Opus/Sonnet (see `PRD-agent-sdk-migration.md`).
+    hard roles on Opus/Sonnet.
   - **OpenRouter** — any of 600+ models with one API key; reports real $ cost.
 - **Persistent memory** — conversation history per workspace.
 - **Cost/usage dashboard** — per-provider/model spend with CSV/JSON export.

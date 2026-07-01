@@ -2,8 +2,8 @@
   "name": "openrepl",
   "version": "0.1.0",
   "type": "module",
-  "description": "OpenREPL — open-source, self-hosted Replit alternative. Bring your own model.",
-  "keywords": ["replit-alternative", "ai-coding-agent", "self-hosted", "web-ide", "bring-your-own-model"],
+  "description": "OpenREPL — open-source, self-hosted AI coding workspace. Bring your own model.",
+  "keywords": ["ai-coding-workspace", "ai-coding-agent", "self-hosted", "web-ide", "bring-your-own-model"],
   "bin": {
     "openrepl": "./bin/openrepl.js"
   },

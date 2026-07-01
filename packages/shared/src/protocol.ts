@@ -20,7 +20,7 @@ export interface WorkflowStep {
   preview?: boolean;
 }
 
-/** A named run configuration — like Replit/Lovable workflows. Runs steps together. */
+/** A named run configuration. Runs its steps together. */
 export interface Workflow {
   name: string;
   steps: WorkflowStep[];
