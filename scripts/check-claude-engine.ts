@@ -170,10 +170,16 @@ async function main() {
   );
 
   // The full multi-agent build + self-heal loop can take minutes.
-  await waitFor(ws, events, (e) => e.type === 'done', 360_000).catch((err) => {
-    report([`FAIL — build run did not finish: ${err.message}`, `credential: ${credSource}`]);
-    process.exitCode = 1;
-  });
+  try {
+    await waitFor(ws, events, (e) => e.type === 'done', 360_000);
+  } catch (err) {
+    // Abort here: probing a half-built app and running Phase B while the first
+    // run may still be active would make AC2/AC3 measure the wrong run.
+    report([`FAIL — build run did not finish: ${(err as Error).message}`, `credential: ${credSource}`]);
+    ws.close();
+    await server.close();
+    process.exit(1);
+  }
 
   const agentCalls = events.filter((e) => isToolCall(e, 'Agent'));
   const delegated = agentCalls
