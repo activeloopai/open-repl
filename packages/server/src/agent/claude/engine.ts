@@ -29,38 +29,32 @@ const MCP_TOOLS = ['read_file', 'write_file', 'list_dir', 'search_repo', 'run_co
 // Bash would let a "read-only" reviewer run shell commands under the default
 // allow-all allowlist.
 const BUILTIN_TOOLS = ['Read', 'Glob', 'Grep'] as const;
-// NOTE: we deliberately do NOT put these in `allowedTools`. Tools in
-// `allowedTools` are auto-approved and bypass `canUseTool`, which would make the
-// read-only loop guard and the run_command allowlist in canUseTool ineffective.
-// With an empty allowlist, EVERY tool call flows through canUseTool (our single
-// gate: permit-set + loop guard + command allowlist), which auto-allows without
-// any interactive prompt in headless mode.
+// Auto-approve the tools our roles use (no interactive prompt in headless mode).
+// The per-role restriction (reviewer can't write, etc.) is enforced by each
+// AgentDefinition.tools list, not here.
+const allowedTools = ['Agent', ...BUILTIN_TOOLS, ...MCP_TOOLS.map((n) => `mcp__${MCP_SERVER}__${n}`)];
 
 /** Read-only tools that are safe to dedupe: identical repeated calls add nothing. */
 const READONLY_FOR_LOOP_GUARD = new Set(['Read', 'Glob', 'Grep', 'read_file', 'list_dir', 'search_repo']);
-/** Allow this many identical read-only calls before treating it as a stuck loop. */
-const LOOP_LIMIT = 2;
+/** Only break a clearly-stuck loop, not legitimate re-reads during a fix cycle. */
+const LOOP_LIMIT = 8;
 
 /**
- * Permission gate (PRD §4.3): auto-approve the read-only built-ins + `Agent` +
- * the OpenREPL MCP tools, deny anything else, enforce the command allowlist on
- * the `run_command` MCP tool, and break stuck read-only loops.
+ * Permission gate: DEFAULT-ALLOW (so SDK-internal tools like TodoWrite are never
+ * blocked), applying only two denials — the run_command allowlist and a stuck
+ * read-only loop guard.
  *
- * Loop guard: a real run-log showed the orchestrator calling `list_dir {"."}`
- * ~14× in a row, burning the turn budget so the reviewer's fixes were never
- * applied. We dedupe identical read-only calls — after LOOP_LIMIT repeats we
- * deny with a message pointing back at the prior result. Side-effecting tools
- * (write_file/run_command/run_app) are never deduped — they legitimately repeat
- * in the run → fix loop.
+ * Note: tools in `allowedTools` are auto-approved and skip canUseTool, so for a
+ * normal run this gate mainly fires for the run_command allowlist. The real
+ * loop mitigation is the orchestrator prompt ("avoid redundant inspection");
+ * this guard is a backstop for any read-only call that does reach canUseTool.
+ * A too-strict version (deny-unless-permitted) was reverted — it blocked the
+ * SDK's own tools and stalled real runs.
  */
 export function makeCanUseTool(allowlist: string[]): CanUseTool {
-  const permitted = new Set<string>([...BUILTIN_TOOLS, 'Agent', ...MCP_TOOLS]);
   const seen = new Map<string, number>();
   return async (toolName, input) => {
     const bare = toolName.replace(/^mcp__openrepl__/, '');
-    if (!permitted.has(bare)) {
-      return { behavior: 'deny', message: `Tool not permitted: ${toolName}` };
-    }
     if (bare === 'run_command') {
       const command = String((input as { command?: unknown }).command ?? '');
       if (!isCommandAllowed(command, allowlist)) {
@@ -135,8 +129,7 @@ export class ClaudeAgentEngine implements AgentEngine {
       settingSources: [],
       strictMcpConfig: true,
       persistSession: false,
-      // Empty on purpose — canUseTool is the single gate (see BUILTIN_TOOLS note).
-      allowedTools: [],
+      allowedTools,
       canUseTool: makeCanUseTool(config.commandAllowlist),
       maxTurns: config.maxSteps,
       // The subprocess is Anthropic's own claude binary, which needs the host

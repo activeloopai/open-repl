@@ -8,15 +8,12 @@ import { makeCanUseTool } from './engine.js';
  */
 const ctx = {} as never;
 
-describe('canUseTool — permission + allowlist', () => {
-  it('denies a tool that is not on the permitted list', async () => {
+describe('canUseTool — default-allow + allowlist', () => {
+  it('default-allows tools it does not specifically gate (incl. SDK-internal tools)', async () => {
+    // Must NOT block SDK-internal tools (e.g. TodoWrite) — a deny-unless-listed
+    // gate stalled real runs. Per-role tool restriction is via AgentDefinition.
     const gate = makeCanUseTool([]);
-    const r = await gate('mcp__openrepl__rm_rf', {}, ctx);
-    expect(r.behavior).toBe('deny');
-  });
-
-  it('allows permitted built-ins and MCP tools (empty allowlist = allow-all commands)', async () => {
-    const gate = makeCanUseTool([]);
+    expect((await gate('TodoWrite', { todos: [] }, ctx)).behavior).toBe('allow');
     expect((await gate('Read', { file_path: 'a' }, ctx)).behavior).toBe('allow');
     expect((await gate('mcp__openrepl__run_command', { command: 'rm -rf /' }, ctx)).behavior).toBe('allow');
   });
@@ -38,12 +35,11 @@ describe('canUseTool — permission + allowlist', () => {
 });
 
 describe('canUseTool — read-only loop guard', () => {
-  it('denies the 3rd identical read-only call (breaks a stuck list_dir loop)', async () => {
+  it('denies only after a clearly-stuck run of identical read-only calls (LOOP_LIMIT=8)', async () => {
     const gate = makeCanUseTool([]);
     const call = () => gate('mcp__openrepl__list_dir', { path: '.' }, ctx);
-    expect((await call()).behavior).toBe('allow'); // 1
-    expect((await call()).behavior).toBe('allow'); // 2 (LOOP_LIMIT)
-    expect((await call()).behavior).toBe('deny'); // 3 — loop broken
+    for (let i = 0; i < 8; i++) expect((await call()).behavior).toBe('allow'); // 1..8 legit re-reads
+    expect((await call()).behavior).toBe('deny'); // 9th — runaway loop broken
   });
 
   it('does not dedupe across different arguments', async () => {
