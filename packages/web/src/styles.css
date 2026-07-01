@@ -12,19 +12,19 @@
   --text-dim: #9a9aa3;
   --text-faint: #6a6a72;
 
-  /* Coral-orange accent (OpenREPL identity, kin to Replit's) */
-  --accent: #ff5c35;
-  --accent-hover: #ff7a58;
-  --accent-soft: rgba(255, 92, 53, 0.14);
-  --accent-fg: #1a0d08;
+  /* Coral-orange accent — Replit brand orange #ff3c00 */
+  --accent: #ff3c00;
+  --accent-hover: #ff5a2b;
+  --accent-soft: rgba(255, 60, 0, 0.14);
+  --accent-fg: #fff;
 
   --ok: #35c26a;
   --bad: #ff5c5c;
   --warn: #f0b429;
 
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.45);
@@ -104,11 +104,11 @@ code {
   width: 24px;
   height: 24px;
   border-radius: 7px;
-  background: linear-gradient(135deg, var(--accent), #ff8a3d);
+  background: linear-gradient(135deg, var(--accent), #ff7a3d);
   color: var(--accent-fg);
   font-weight: 800;
   font-size: 13px;
-  box-shadow: 0 2px 8px rgba(255, 92, 53, 0.35);
+  box-shadow: 0 2px 8px rgba(255, 60, 0, 0.35);
 }
 .project-pill {
   display: inline-flex;
@@ -354,9 +354,10 @@ button.ghost:hover {
   text-align: center;
 }
 .no-project h2 {
-  margin: 0 0 6px;
-  font-size: 20px;
-  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 /* ── chat ───────────────────────────────────────────── */
@@ -381,12 +382,14 @@ button.ghost:hover {
 }
 .chat-empty {
   margin: auto;
-  max-width: 340px;
+  max-width: 380px;
 }
 .chat-empty h3 {
   color: var(--text);
-  margin: 0 0 6px;
-  font-size: 16px;
+  margin: 0 0 8px;
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 .suggestions {
   display: flex;
@@ -433,7 +436,7 @@ button.ghost:hover {
   color: var(--text-dim);
 }
 .msg.assistant .avatar {
-  background: linear-gradient(135deg, var(--accent), #ff8a3d);
+  background: linear-gradient(135deg, var(--accent), #ff7a3d);
   color: var(--accent-fg);
 }
 .msg-main {
