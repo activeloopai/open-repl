@@ -9,8 +9,8 @@ name: CodeQL
 on:
   push:
     branches: [main]
+  # Every PR regardless of base, so stacked / intermediate PRs don't skip SAST.
   pull_request:
-    branches: [main]
   schedule:
     # Weekly full scan (Mondays 06:00 UTC).
     - cron: "0 6 * * 1"
