@@ -39,7 +39,7 @@ export class CommandRunner {
   }
 
   /** Run a one-shot command, streaming output. Resolves with exit code. */
-  async run(command: string): Promise<number> {
+  async run(command: string, signal?: AbortSignal): Promise<number> {
     const env = { ...process.env, ...(await this.env()) };
     return new Promise((resolve) => {
       const p = spawn(command, { cwd: this.cwd, env, shell: true, stdio: 'pipe' }) as ChildProcessWithoutNullStreams;
@@ -49,15 +49,30 @@ export class CommandRunner {
         buf += s;
         this.onData(s);
       };
+      // Stop cancels in-flight work: kill the child process group on abort so a
+      // stopped turn does not leave installs/tests running in the workspace.
+      const onAbort = () => {
+        try {
+          p.kill('SIGTERM');
+        } catch {
+          /* already gone */
+        }
+      };
+      if (signal) {
+        if (signal.aborted) onAbort();
+        else signal.addEventListener('abort', onAbort, { once: true });
+      }
+      const done = (code: number) => {
+        signal?.removeEventListener('abort', onAbort);
+        this.lastOutput = buf;
+        resolve(code);
+      };
       p.stdout.on('data', emit);
       p.stderr.on('data', emit);
-      p.on('close', (code) => {
-        this.lastOutput = buf;
-        resolve(code ?? 0);
-      });
+      p.on('close', (code) => done(code ?? 0));
       p.on('error', (err) => {
         this.onData(`\n[runner error] ${err.message}\n`);
-        resolve(1);
+        done(1);
       });
     });
   }

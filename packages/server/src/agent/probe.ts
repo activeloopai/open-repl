@@ -16,7 +16,13 @@ export interface ProbeResult {
  *  - still alive after the timeout, no port → assume ok (server without a
  *    recognizable port line)
  */
-export async function probeApp(dir: string, getEnv: () => Promise<Record<string, string>>, timeoutMs = 12000): Promise<ProbeResult> {
+export async function probeApp(
+  dir: string,
+  getEnv: () => Promise<Record<string, string>>,
+  timeoutMs = 12000,
+  signal?: AbortSignal,
+): Promise<ProbeResult> {
+  if (signal?.aborted) return { ok: false, logs: 'aborted' };
   const det = await detectWorkflows(dir);
   if (det.self) return { ok: false, logs: 'This folder is OpenREPL itself — not a user app.' };
   const wf = det.workflows[0];
@@ -32,6 +38,7 @@ export async function probeApp(dir: string, getEnv: () => Promise<Record<string,
     logs += r.output;
     if (r.code !== 0) return { ok: false, logs: trim(logs + `\n[dependency install failed: ${det.install}]`) };
   }
+  if (signal?.aborted) return { ok: false, logs: trim(logs + '\n[aborted]') };
 
   return new Promise<ProbeResult>((resolve) => {
     let settled = false;
@@ -51,8 +58,13 @@ export async function probeApp(dir: string, getEnv: () => Promise<Record<string,
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       mgr.stop().finally(() => resolve(res));
     };
+    // Stop cancels the probe: tear down the spawned app instead of leaving it
+    // (and its port) running after the user stopped the turn.
+    const onAbort = () => finish({ ok: false, logs: trim(logs + '\n[aborted]') });
+    if (signal) signal.addEventListener('abort', onAbort, { once: true });
     timer = setTimeout(() => finish({ ok: true, logs: trim(logs + '\n[app started; no crash detected]') }), timeoutMs);
     mgr.start(wf).catch((e) => finish({ ok: false, logs: trim(logs + `\n[failed to start: ${e}]`) }));
   });

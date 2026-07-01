@@ -298,11 +298,14 @@ export class Session {
     const deps: ToolDeps = {
       workspace: m.workspace,
       commandAllowlist: m.config.commandAllowlist,
+      // Thread the Stop signal through so a stopped turn cancels in-flight
+      // installs/tests (CommandRunner) and app probes (probeApp).
+      signal: controller.signal,
       runCommand: async (command) => {
-        const code = await m.shell.run(command);
+        const code = await m.shell.run(command, controller.signal);
         return { code, output: m.shell.lastOutput };
       },
-      runApp: () => probeApp(m.dir, () => m.secrets.all()),
+      runApp: () => probeApp(m.dir, () => m.secrets.all(), 12000, controller.signal),
     };
 
     // Claude provider → Claude Agent SDK engine (PRD §4.1). Same UiEvent stream
