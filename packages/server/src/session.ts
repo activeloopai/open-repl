@@ -261,6 +261,10 @@ export class Session {
       await m.workflowMgr.stop();
       m.workflowMgr = null;
     }
+    // Also kill anything started outside the workflow — a dev server the agent
+    // launched via run_command, or a command typed in the terminal — so Stop
+    // reliably stops "whatever is running", not only Run-button apps.
+    m.shell.stopRuns();
     m.activeWorkflow = null;
     this.emit({ type: 'app_status', state: 'stopped' });
   }

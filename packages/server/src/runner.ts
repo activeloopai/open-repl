@@ -8,6 +8,8 @@ import { spawn as ptySpawn, type IPty } from 'node-pty';
  */
 export class CommandRunner {
   private shell: IPty | null = null;
+  /** Live one-shot children so Stop can kill them even without a per-call signal. */
+  private active = new Set<ChildProcessWithoutNullStreams>();
   lastOutput = '';
 
   constructor(
@@ -46,6 +48,7 @@ export class CommandRunner {
       // the WHOLE tree on abort — `shell: true` spawns a subshell, and killing
       // only the shell leaves the real command (npm/pip/dev server) running.
       const p = spawn(command, { cwd: this.cwd, env, shell: true, stdio: 'pipe', detached: true }) as ChildProcessWithoutNullStreams;
+      this.active.add(p);
       let buf = '';
       const emit = (chunk: Buffer) => {
         const s = chunk.toString();
@@ -57,16 +60,7 @@ export class CommandRunner {
       let aborted = false;
       const onAbort = () => {
         aborted = true;
-        try {
-          if (p.pid) process.kill(-p.pid, 'SIGTERM'); // negative pid = the group
-          else p.kill('SIGTERM');
-        } catch {
-          try {
-            p.kill('SIGTERM');
-          } catch {
-            /* already gone */
-          }
-        }
+        killGroup(p);
       };
       if (signal) {
         if (signal.aborted) onAbort();
@@ -74,6 +68,7 @@ export class CommandRunner {
       }
       const done = (code: number) => {
         signal?.removeEventListener('abort', onAbort);
+        this.active.delete(p);
         this.lastOutput = buf;
         resolve(code);
       };
@@ -90,6 +85,16 @@ export class CommandRunner {
     });
   }
 
+  /**
+   * Kill every in-flight one-shot command (whole process group each). Used by
+   * Stop so a dev server started by the agent or typed in the terminal — not
+   * just a Run-button workflow — actually stops.
+   */
+  stopRuns(): void {
+    for (const p of this.active) killGroup(p);
+    this.active.clear();
+  }
+
   kill(): void {
     try {
       this.shell?.kill();
@@ -97,6 +102,20 @@ export class CommandRunner {
       /* already gone */
     }
     this.shell = null;
+  }
+}
+
+/** Kill a detached child and its whole process group (SIGTERM), best-effort. */
+function killGroup(p: ChildProcessWithoutNullStreams): void {
+  try {
+    if (p.pid) process.kill(-p.pid, 'SIGTERM'); // negative pid = the group
+    else p.kill('SIGTERM');
+  } catch {
+    try {
+      p.kill('SIGTERM');
+    } catch {
+      /* already gone */
+    }
   }
 }
 
