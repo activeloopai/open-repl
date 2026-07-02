@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ComponentType } from 'react';
 import { store, useStore } from './store.js';
 import { Chat } from './panes/Chat.js';
 import { FilesEditor } from './panes/FilesEditor.js';
@@ -12,7 +12,7 @@ import { IconFiles, IconPreview, IconTerminal, IconModels, IconUsage, IconSecret
 
 type Tab = 'editor' | 'preview' | 'terminal' | 'models' | 'usage' | 'secrets';
 
-const TABS: { id: Tab; label: string; icon: () => JSX.Element }[] = [
+const TABS: { id: Tab; label: string; icon: ComponentType<{ size?: number }> }[] = [
   { id: 'editor', label: 'Files', icon: IconFiles },
   { id: 'preview', label: 'Preview', icon: IconPreview },
   { id: 'terminal', label: 'Terminal', icon: IconTerminal },
