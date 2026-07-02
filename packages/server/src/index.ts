@@ -8,6 +8,7 @@ import { WebSocketServer } from 'ws';
 import type { ClientCommand, UiEvent } from '@openrepl/shared';
 import { Session } from './session.js';
 import { ProjectRegistry } from './projects.js';
+import { pickPreview } from './preview.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
@@ -53,14 +54,19 @@ export async function createServer(opts: ServerOptions = {}): Promise<RunningSer
     await projects.open(path.resolve(opts.initialProject)).catch(() => undefined);
   }
 
-  // Single-user assumption: the most recent session owns the preview proxy.
+  // Preview proxy ownership follows the *running app*, not the newest socket:
+  // opening a second tab (or a reconnect) must not steal the proxy from the
+  // session that actually started the dev server. Prefer any live session whose
+  // preview has a detected port; fall back to the most-recent session so the
+  // "no dev server yet" hint still shows before an app is launched.
+  const sessions = new Set<Session>();
   let currentSession: Session | null = null;
 
   const server = http.createServer(async (req, res) => {
     const url = req.url || '/';
 
     if (url.startsWith('/__preview')) {
-      const preview = currentSession?.getPreview();
+      const preview = pickPreview(sessions, currentSession);
       if (preview) preview.proxy(req, res);
       else {
         res.writeHead(503);
@@ -96,6 +102,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<RunningSer
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
     };
     const session = new Session(emit, projects);
+    sessions.add(session);
     currentSession = session;
     session.init().catch((e) => emit({ type: 'error', scope: 'init', message: String(e) }));
 
@@ -110,7 +117,8 @@ export async function createServer(opts: ServerOptions = {}): Promise<RunningSer
     });
     ws.on('close', () => {
       session.close();
-      if (currentSession === session) currentSession = null;
+      sessions.delete(session);
+      if (currentSession === session) currentSession = [...sessions].pop() ?? null;
     });
   });
 

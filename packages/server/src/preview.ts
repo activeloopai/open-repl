@@ -46,6 +46,26 @@ export class PreviewManager {
   }
 }
 
+/** Anything that can expose a preview — a Session, in practice. */
+export interface PreviewSource {
+  getPreview(): PreviewManager | null;
+}
+
+/**
+ * Pick which session's preview the /__preview proxy should serve. Ownership
+ * follows the running app: the first live session whose preview has a detected
+ * port wins, so a second tab or a reconnect can't steal the proxy from the
+ * session that actually launched the dev server. Falls back to the most-recent
+ * session (which may have no port yet) for the pre-launch "no dev server" hint.
+ */
+export function pickPreview(sessions: Iterable<PreviewSource>, current: PreviewSource | null): PreviewManager | null {
+  for (const s of sessions) {
+    const p = s.getPreview();
+    if (p?.getPort() != null) return p;
+  }
+  return current?.getPreview() ?? null;
+}
+
 export function checkPort(port: number, host = '127.0.0.1', timeout = 500): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = new net.Socket();
