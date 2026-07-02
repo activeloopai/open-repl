@@ -166,6 +166,10 @@ export class Session {
     this.sendModelConfig(m);
     await this.sendWorkflows(m);
     await this.sendProjects();
+    // Push usage on open too: panes stay mounted, so the client's one-time
+    // get_usage never re-fires on a project switch — without this, Usage shows
+    // empty until a full page refresh.
+    await this.sendUsage(m);
   }
 
   private async createMount(dir: string): Promise<Mount> {
