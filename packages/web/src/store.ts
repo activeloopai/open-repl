@@ -142,6 +142,8 @@ class Store {
           usage: [],
           appStatus: { state: 'idle' },
         });
+      case 'history':
+        return this.set({ messages: e.messages.map((m) => ({ role: m.role, content: m.content, tools: [] })) });
       case 'tree':
         return this.set({ tree: e.nodes });
       case 'file_changed': {

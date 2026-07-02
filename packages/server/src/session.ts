@@ -158,6 +158,9 @@ export class Session {
     const m = await this.createMount(project.path);
     this.mount = m;
     this.emit({ type: 'ready', workspaceDir: m.dir, provider: m.config.provider });
+    // Replay the persisted conversation so reopening a project shows what was
+    // built and how — the history is already loaded for the LLM, just not shown.
+    this.emit({ type: 'history', messages: m.memory.history() });
     this.emit({ type: 'tree', nodes: await m.workspace.tree() });
     this.emit({ type: 'secrets', keys: await m.secrets.keys() });
     this.sendModelConfig(m);
