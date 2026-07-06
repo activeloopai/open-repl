@@ -1,9 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { PreviewManager, checkPort } from '../src/preview.js';
+import { PreviewManager, checkPort, pickPreview, type PreviewSource } from '../src/preview.js';
 import { startStaticServer } from '../src/static-server.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { tmpWorkspace } from './helpers.js';
+
+/** A mounted session: has a PreviewManager, with a detected port or not. */
+function mounted(port: number | null): PreviewSource {
+  const preview = new PreviewManager();
+  if (port != null) preview.setPort(port);
+  return { getPreview: () => preview };
+}
+/** An unmounted session: no project open yet, so no preview at all. */
+function unmounted(): PreviewSource {
+  return { getPreview: () => null };
+}
 
 describe('PreviewManager', () => {
   it('tracks the detected port', () => {
@@ -30,5 +41,35 @@ describe('PreviewManager', () => {
 describe('checkPort', () => {
   it('is false for a port nothing listens on', async () => {
     expect(await checkPort(1, '127.0.0.1', 300)).toBe(false);
+  });
+});
+
+describe('pickPreview', () => {
+  it('prefers the session whose app is running over the newest connection', () => {
+    const withApp = mounted(5000);
+    const current = mounted(null);
+    expect(pickPreview([withApp, current], current)?.getPort()).toBe(5000);
+  });
+
+  it('falls back to the current session when no app has a port yet', () => {
+    const current = mounted(null);
+    const chosen = pickPreview([current], current);
+    expect(chosen).toBe(current.getPreview());
+    expect(chosen?.getPort()).toBeNull();
+  });
+
+  it('returns null when the current session has no project mounted', () => {
+    const current = unmounted();
+    expect(pickPreview([current], current)).toBeNull();
+  });
+
+  it('returns null when there are no sessions and no current', () => {
+    expect(pickPreview([], null)).toBeNull();
+  });
+
+  it('a second connection cannot steal the proxy from the running app', () => {
+    const a = mounted(5000);
+    const b = unmounted();
+    expect(pickPreview([a, b], b)?.getPort()).toBe(5000);
   });
 });
