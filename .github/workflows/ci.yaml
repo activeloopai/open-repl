@@ -41,7 +41,10 @@ jobs:
           if [ -f coverage/coverage-summary.json ]; then
             node -e "
               const t = require('./coverage/coverage-summary.json').total;
-              const f = (m) => m.pct.toFixed(2) + '% (' + m.covered + '/' + m.total + ')';
+              // Colour each category by threshold (like hivemind): green >=90,
+              // orange 80-89, red <80 — so a weak metric is visible at a glance.
+              const dot = (p) => (p >= 90 ? '🟢' : p >= 80 ? '🟠' : '🔴');
+              const f = (m) => dot(m.pct) + ' ' + m.pct.toFixed(2) + '% (' + m.covered + '/' + m.total + ')';
               const out = [
                 '### Test coverage',
                 '',
