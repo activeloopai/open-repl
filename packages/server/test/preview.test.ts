@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PreviewManager, checkPort, pickPreview, type PreviewSource } from '../src/preview.js';
+import { PreviewManager, checkPort, pickPreview, rewritePreviewHtml, type PreviewSource } from '../src/preview.js';
 import { startStaticServer } from '../src/static-server.js';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -41,6 +41,26 @@ describe('PreviewManager', () => {
 describe('checkPort', () => {
   it('is false for a port nothing listens on', async () => {
     expect(await checkPort(1, '127.0.0.1', 300)).toBe(false);
+  });
+});
+
+describe('rewritePreviewHtml', () => {
+  it('prefixes root-absolute href/src/action so links stay in the preview', () => {
+    const out = rewritePreviewHtml(
+      '<link href="/static/app.css"><a href="/add">x</a><form action="/">',
+    );
+    expect(out).toContain('href="/__preview/static/app.css"');
+    expect(out).toContain('href="/__preview/add"');
+    expect(out).toContain('action="/__preview/"');
+  });
+
+  it('rewrites url(/...) in inline styles', () => {
+    expect(rewritePreviewHtml('background:url(/bg.png)')).toContain('url(/__preview/bg.png)');
+  });
+
+  it('leaves absolute and protocol-relative URLs untouched', () => {
+    const html = '<a href="https://x.com/y">a</a><script src="//cdn/z.js"></script><a href="rel">r</a>';
+    expect(rewritePreviewHtml(html)).toBe(html);
   });
 });
 

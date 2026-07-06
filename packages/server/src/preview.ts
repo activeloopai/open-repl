@@ -33,7 +33,31 @@ export class PreviewManager {
     const proxyReq = http.request(
       { host: '127.0.0.1', port: this.port, path: targetPath, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${this.port}` } },
       (proxyRes) => {
-        res.writeHead(proxyRes.statusCode || 502, proxyRes.headers);
+        const headers = { ...proxyRes.headers };
+        // Keep redirects inside the preview: `Location: /login` would otherwise
+        // send the iframe to OpenREPL's own /login.
+        const loc = headers.location;
+        if (typeof loc === 'string' && loc.startsWith('/') && !loc.startsWith('//')) {
+          headers.location = '/__preview' + loc;
+        }
+        // Root-absolute URLs in served HTML (href="/x", src="/x", action="/x")
+        // resolve against OpenREPL's origin, escape /__preview, and hit the SPA
+        // fallback → OpenREPL renders inside its own preview ("inception").
+        // Rewrite them to stay under /__preview so links, forms and assets go
+        // to the app instead.
+        if (String(headers['content-type'] || '').includes('text/html')) {
+          const chunks: Buffer[] = [];
+          proxyRes.on('data', (c: Buffer) => chunks.push(c));
+          proxyRes.on('end', () => {
+            const html = rewritePreviewHtml(Buffer.concat(chunks).toString('utf8'));
+            delete headers['content-length']; // length changed after rewrite
+            delete headers['content-encoding']; // we send decoded text
+            res.writeHead(proxyRes.statusCode || 502, headers);
+            res.end(html);
+          });
+          return;
+        }
+        res.writeHead(proxyRes.statusCode || 502, headers);
         proxyRes.pipe(res);
       },
     );
@@ -44,6 +68,17 @@ export class PreviewManager {
     req.pipe(proxyReq);
     return true;
   }
+}
+
+/**
+ * Prefix root-absolute URLs in HTML with /__preview so a server-rendered app's
+ * links/forms/assets stay in the preview iframe instead of escaping to OpenREPL.
+ * Leaves protocol-relative (//host) and absolute (http://) URLs untouched.
+ */
+export function rewritePreviewHtml(html: string): string {
+  return html
+    .replace(/(\s(?:href|src|action)\s*=\s*["'])\/(?!\/)/gi, '$1/__preview/')
+    .replace(/(url\(\s*["']?)\/(?!\/)/gi, '$1/__preview/');
 }
 
 /** Anything that can expose a preview — a Session, in practice. */
