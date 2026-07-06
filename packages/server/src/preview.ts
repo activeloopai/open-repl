@@ -29,9 +29,21 @@ export class PreviewManager {
       res.end('No dev server detected yet. Run your dev command in the terminal.');
       return true;
     }
+    this.attempt(req, res, 0);
+    return true;
+  }
+
+  /**
+   * Forward one request to the app, retrying a fresh connection for idempotent
+   * requests. Dev servers with a reloader (Flask debug, nodemon) briefly refuse
+   * connections while restarting on boot; without the retry the iframe's first
+   * GET lands in that gap and shows "Preview target unreachable".
+   */
+  private attempt(req: http.IncomingMessage, res: http.ServerResponse, tries: number): void {
+    const idempotent = !req.method || req.method === 'GET' || req.method === 'HEAD';
     const targetPath = (req.url || '/').replace(/^\/__preview/, '') || '/';
     const proxyReq = http.request(
-      { host: '127.0.0.1', port: this.port, path: targetPath, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${this.port}` } },
+      { host: '127.0.0.1', port: this.port ?? undefined, path: targetPath, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${this.port}` } },
       (proxyRes) => {
         const headers = { ...proxyRes.headers };
         // Keep redirects inside the preview: `Location: /login` would otherwise
@@ -62,11 +74,18 @@ export class PreviewManager {
       },
     );
     proxyReq.on('error', () => {
+      // Retry the reloader gap for idempotent requests (~1s of 200ms backoffs).
+      if (idempotent && tries < 5) {
+        setTimeout(() => this.attempt(req, res, tries + 1), 200);
+        return;
+      }
       res.writeHead(502, { 'content-type': 'text/plain' });
       res.end('Preview target unreachable.');
     });
-    req.pipe(proxyReq);
-    return true;
+    // A GET/HEAD has no body to forward; ending directly lets us retry cleanly
+    // without re-piping an already-consumed request stream.
+    if (idempotent) proxyReq.end();
+    else req.pipe(proxyReq);
   }
 }
 
