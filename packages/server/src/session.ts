@@ -6,7 +6,8 @@ import { UsageStore, makeUsageRecord } from './usage.js';
 import { Secrets } from './secrets.js';
 import { CommandRunner, detectPort } from './runner.js';
 import { PreviewManager } from './preview.js';
-import { detectWorkflows, WorkflowManager } from './workflow.js';
+import { detectWorkflows } from './workflow.js';
+import { AppHub } from './app-hub.js';
 import { ProviderRegistry } from './providers/registry.js';
 import { ProjectRegistry } from './projects.js';
 import { buildTools, type ToolDeps } from './agent/tools.js';
@@ -28,25 +29,30 @@ interface Mount {
   secrets: Secrets;
   registry: ProviderRegistry;
   shell: CommandRunner;
-  preview: PreviewManager;
   config: OpenReplConfig;
-  workflowMgr: WorkflowManager | null;
   workflows: Workflow[];
-  activeWorkflow: string | null;
 }
 
 /** One session per WebSocket connection. The active project can be switched at runtime. */
 export class Session {
   private mount: Mount | null = null;
   private activeRun: AbortController | null = null;
+  private unsubHub: () => void;
 
   constructor(
     private emit: (event: UiEvent) => void,
     private projects: ProjectRegistry,
-  ) {}
+    private hub: AppHub = new AppHub(),
+  ) {
+    // Forward the running app's lifecycle events, but only for the workspace
+    // this session currently has open.
+    this.unsubHub = hub.subscribe((dir, e) => {
+      if (dir === this.mount?.dir) this.emit(e);
+    });
+  }
 
   getPreview(): PreviewManager | null {
-    return this.mount?.preview ?? null;
+    return this.mount ? this.hub.preview(this.mount.dir) : null;
   }
 
   async init(): Promise<void> {
@@ -170,6 +176,11 @@ export class Session {
     // get_usage never re-fires on a project switch — without this, Usage shows
     // empty until a full page refresh.
     await this.sendUsage(m);
+    // Snapshot the shared app state: a reconnect or a second tab must see a
+    // still-running app (so it gets the live preview and a Stop button).
+    const status = this.hub.status(m.dir);
+    if (status) this.emit(status);
+    if (this.hub.preview(m.dir)?.getPort() != null) this.emit({ type: 'preview_ready', url: '/__preview/' });
   }
 
   private async createMount(dir: string): Promise<Mount> {
@@ -178,25 +189,22 @@ export class Session {
     const usage = new UsageStore(dir);
     const secrets = new Secrets(dir);
     const registry = new ProviderRegistry((key) => secrets.all().then((s) => s[key]));
-    const preview = new PreviewManager();
     const config = await loadConfig(dir);
     const shell = new CommandRunner(
       dir,
       () => secrets.all(),
       (data) => {
         this.emit({ type: 'term_data', data });
+        // A dev server started in the terminal: surface it in the shared preview.
         const port = detectPort(data);
-        if (port && preview.getPort() !== port) {
-          preview.setPort(port);
-          this.emit({ type: 'preview_ready', url: '/__preview/' });
-        }
+        if (port) this.hub.notePort(dir, port);
       },
       (code) => this.emit({ type: 'term_exit', code }),
     );
     await memory.load();
     await shell.startShell().catch(() => undefined);
     workspace.watch((path, kind) => this.emit({ type: 'file_changed', path, kind }));
-    return { dir, workspace, memory, usage, secrets, registry, shell, preview, config, workflowMgr: null, workflows: [], activeWorkflow: null };
+    return { dir, workspace, memory, usage, secrets, registry, shell, config, workflows: [] };
   }
 
   private async unmount(): Promise<void> {
@@ -204,8 +212,9 @@ export class Session {
     this.activeRun = null;
     const m = this.mount;
     if (!m) return;
+    // The terminal is per-tab, so kill it; the app is workspace-level and lives
+    // in the hub, so it keeps running when a tab switches projects or closes.
     m.shell.kill();
-    if (m.workflowMgr) await m.workflowMgr.stop();
     await m.workspace.close();
     this.mount = null;
   }
@@ -215,58 +224,22 @@ export class Session {
   private async sendWorkflows(m: Mount): Promise<void> {
     const det = await detectWorkflows(m.dir);
     m.workflows = det.workflows;
-    this.emit({ type: 'workflows', workflows: det.workflows, active: m.activeWorkflow });
+    this.emit({ type: 'workflows', workflows: det.workflows, active: this.hub.activeWorkflow(m.dir) });
   }
 
   private async runWorkflow(m: Mount, name?: string): Promise<void> {
-    await this.stopWorkflow(m);
-    const det = await detectWorkflows(m.dir);
-    m.workflows = det.workflows;
-
-    if (det.self) {
-      return this.emit({ type: 'app_status', state: 'error', message: 'This is the OpenREPL folder itself — open your own app folder.' });
-    }
-    const wf = name ? det.workflows.find((w) => w.name === name) : det.workflows[0];
-    if (!wf) {
-      return this.emit({ type: 'app_status', state: 'error', message: 'No runnable app found. Ask the agent to create one (e.g. an index.html or a package.json with a dev/start script).' });
-    }
-
-    if (det.install) {
-      this.emit({ type: 'app_status', state: 'installing', message: `Installing dependencies… (${det.install})` });
-      const code = await m.shell.run(det.install);
-      if (code !== 0) return this.emit({ type: 'app_status', state: 'error', message: 'Dependency install failed — see the terminal output.' });
-    }
-
-    this.emit({ type: 'app_status', state: 'starting', message: `Starting workflow "${wf.name}" — ${wf.steps.map((s) => s.name).join(' + ')}` });
-    m.workflowMgr = new WorkflowManager(
-      m.dir,
-      () => m.secrets.all(),
-      (step, data) => this.emit({ type: 'term_data', data: `[${step}] ${data}` }),
-      (port) => {
-        if (m.preview.getPort() !== port) {
-          m.preview.setPort(port);
-          this.emit({ type: 'preview_ready', url: '/__preview/' });
-        }
-        this.emit({ type: 'app_status', state: 'running', message: `"${wf.name}" running` });
-      },
-      (step, code) => this.emit({ type: 'app_status', state: 'stopped', message: `${step} exited (code ${code})` }),
-    );
-    await m.workflowMgr.start(wf);
-    m.activeWorkflow = wf.name;
-    this.emit({ type: 'workflows', workflows: det.workflows, active: m.activeWorkflow });
+    // The app lives in the hub (one per workspace, shared across tabs), so any
+    // client sees its status and Stop reaches it no matter which tab ran it.
+    const workflows = await this.hub.run(m.dir, () => m.secrets.all(), name);
+    m.workflows = workflows;
+    this.emit({ type: 'workflows', workflows, active: this.hub.activeWorkflow(m.dir) });
   }
 
   private async stopWorkflow(m: Mount): Promise<void> {
-    if (m.workflowMgr) {
-      await m.workflowMgr.stop();
-      m.workflowMgr = null;
-    }
-    // Also kill anything started outside the workflow — a dev server the agent
-    // launched via run_command, or a command typed in the terminal — so Stop
-    // reliably stops "whatever is running", not only Run-button apps.
+    await this.hub.stop(m.dir);
+    // Also kill anything started outside the workflow in this tab's shell — a
+    // dev server the agent launched via run_command, or a terminal command.
     m.shell.stopRuns();
-    m.activeWorkflow = null;
-    this.emit({ type: 'app_status', state: 'stopped' });
   }
 
   /* --------------------------------- models -------------------------------- */
@@ -423,6 +396,7 @@ export class Session {
   }
 
   async close(): Promise<void> {
+    this.unsubHub();
     await this.unmount();
   }
 }

@@ -9,6 +9,7 @@ import type { ClientCommand, UiEvent } from '@openrepl/shared';
 import { Session } from './session.js';
 import { ProjectRegistry } from './projects.js';
 import { pickPreview } from './preview.js';
+import { AppHub } from './app-hub.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
@@ -54,11 +55,9 @@ export async function createServer(opts: ServerOptions = {}): Promise<RunningSer
     await projects.open(path.resolve(opts.initialProject)).catch(() => undefined);
   }
 
-  // Preview proxy ownership follows the *running app*, not the newest socket:
-  // opening a second tab (or a reconnect) must not steal the proxy from the
-  // session that actually started the dev server. Prefer any live session whose
-  // preview has a detected port; fall back to the most-recent session so the
-  // "no dev server yet" hint still shows before an app is launched.
+  // The running app is workspace-level, not per-connection: it lives in the hub
+  // so a second tab or a reconnect sees the same status/preview and can Stop it.
+  const hub = new AppHub();
   const sessions = new Set<Session>();
   let currentSession: Session | null = null;
 
@@ -66,7 +65,9 @@ export async function createServer(opts: ServerOptions = {}): Promise<RunningSer
     const url = req.url || '/';
 
     if (url.startsWith('/__preview')) {
-      const preview = pickPreview(sessions, currentSession);
+      // The hub owns any running app; fall back to a session's preview for a
+      // dev server started in the terminal before an app is registered.
+      const preview = hub.runningPreview() ?? pickPreview(sessions, currentSession);
       if (preview) preview.proxy(req, res);
       else {
         res.writeHead(503);
@@ -101,7 +102,7 @@ export async function createServer(opts: ServerOptions = {}): Promise<RunningSer
     const emit = (event: UiEvent) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(event));
     };
-    const session = new Session(emit, projects);
+    const session = new Session(emit, projects, hub);
     sessions.add(session);
     currentSession = session;
     session.init().catch((e) => emit({ type: 'error', scope: 'init', message: String(e) }));
