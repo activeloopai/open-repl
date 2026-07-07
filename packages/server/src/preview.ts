@@ -12,6 +12,12 @@ export class PreviewManager {
     this.port = port;
   }
 
+  /** Forget the port when the app stops, so the proxy stops pointing at a dead
+   * server and the next start re-emits preview_ready to refresh the iframe. */
+  clearPort(): void {
+    this.port = null;
+  }
+
   getPort(): number | null {
     return this.port;
   }
@@ -43,7 +49,9 @@ export class PreviewManager {
     const idempotent = !req.method || req.method === 'GET' || req.method === 'HEAD';
     const targetPath = (req.url || '/').replace(/^\/__preview/, '') || '/';
     const proxyReq = http.request(
-      { host: '127.0.0.1', port: this.port ?? undefined, path: targetPath, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${this.port}` } },
+      // Force identity encoding: we buffer and rewrite text/html as UTF-8, so a
+      // gzip/br response from the dev server would otherwise be corrupted.
+      { host: '127.0.0.1', port: this.port ?? undefined, path: targetPath, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${this.port}`, 'accept-encoding': 'identity' } },
       (proxyRes) => {
         const headers = { ...proxyRes.headers };
         // Keep redirects inside the preview: `Location: /login` would otherwise
