@@ -27,6 +27,9 @@ interface RunningApp {
 export class AppHub {
   private apps = new Map<string, RunningApp>();
   private listeners = new Set<(dir: string, e: UiEvent) => void>();
+  /** Per-dir promise chain so overlapping run()/stop() can't interleave and
+   * clear or swap `app.mgr` mid-start. */
+  private locks = new Map<string, Promise<unknown>>();
 
   subscribe(fn: (dir: string, e: UiEvent) => void): () => void {
     this.listeners.add(fn);
@@ -74,9 +77,21 @@ export class AppHub {
     this.broadcast(dir, status);
   }
 
+  /** Serialize run()/stop() per dir so they can't interleave. */
+  private serialize<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(dir) ?? Promise.resolve();
+    const next = prev.then(fn, fn);
+    this.locks.set(dir, next.then(() => {}, () => {}));
+    return next;
+  }
+
   /** Run (or re-run) the app for `dir`. Returns the detected workflows. */
-  async run(dir: string, getEnv: () => Promise<Record<string, string>>, name?: string): Promise<Workflow[]> {
-    await this.stop(dir);
+  run(dir: string, getEnv: () => Promise<Record<string, string>>, name?: string): Promise<Workflow[]> {
+    return this.serialize(dir, () => this.runLocked(dir, getEnv, name));
+  }
+
+  private async runLocked(dir: string, getEnv: () => Promise<Record<string, string>>, name?: string): Promise<Workflow[]> {
+    await this.stopLocked(dir);
     const det = await detectWorkflows(dir);
     const app = this.appFor(dir);
     app.workflows = det.workflows;
@@ -89,34 +104,57 @@ export class AppHub {
       this.setStatus(dir, { type: 'app_status', state: 'error', message: 'No runnable app found. Ask the agent to create one (e.g. an index.html or a package.json with a dev/start script).' });
       return det.workflows;
     }
-    if (det.install) {
-      this.setStatus(dir, { type: 'app_status', state: 'installing', message: `Installing dependencies… (${det.install})` });
-      app.installer = new CommandRunner(dir, getEnv, (data) => this.broadcast(dir, { type: 'term_data', data: `[install] ${data}` }), () => {});
-      const code = await app.installer.run(det.install);
-      app.installer = null;
-      if (code !== 0) {
-        this.setStatus(dir, { type: 'app_status', state: 'error', message: 'Dependency install failed — see the terminal output.' });
-        return det.workflows;
+    try {
+      if (det.install) {
+        this.setStatus(dir, { type: 'app_status', state: 'installing', message: `Installing dependencies… (${det.install})` });
+        app.installer = new CommandRunner(dir, getEnv, (data) => this.broadcast(dir, { type: 'term_data', data: `[install] ${data}` }), () => {});
+        const code = await app.installer.run(det.install);
+        app.installer = null;
+        if (code !== 0) {
+          this.setStatus(dir, { type: 'app_status', state: 'error', message: 'Dependency install failed — see the terminal output.' });
+          return det.workflows;
+        }
       }
+      this.setStatus(dir, { type: 'app_status', state: 'starting', message: `Starting workflow "${wf.name}" — ${wf.steps.map((s) => s.name).join(' + ')}` });
+      // Only the last spawned step exiting means the app is really down: a
+      // backend+frontend workflow shouldn't flip to "stopped" when one exits.
+      let live = wf.steps.filter((s) => s.command && !s.static).length;
+      const mgr = new WorkflowManager(
+        dir,
+        getEnv,
+        (step, data) => this.broadcast(dir, { type: 'term_data', data: `[${step}] ${data}` }),
+        (port) => {
+          this.notePort(dir, port);
+          this.setStatus(dir, { type: 'app_status', state: 'running', message: `"${wf.name}" running` });
+        },
+        (step, code) => {
+          if (mgr !== app.mgr) return; // a newer run replaced this workflow
+          if (--live > 0) return;
+          app.mgr = null;
+          app.activeWorkflow = null;
+          app.preview.clearPort();
+          this.setStatus(dir, { type: 'app_status', state: 'stopped', message: `${step} exited (code ${code})` });
+        },
+      );
+      app.mgr = mgr;
+      await mgr.start(wf);
+      app.activeWorkflow = wf.name;
+    } catch (e) {
+      // spawn ENOENT, permission error, etc. — surface it instead of leaving the
+      // UI stuck on "installing…"/"starting…".
+      app.installer = null;
+      app.mgr = null;
+      this.setStatus(dir, { type: 'app_status', state: 'error', message: `Failed to start: ${e instanceof Error ? e.message : String(e)}` });
     }
-    this.setStatus(dir, { type: 'app_status', state: 'starting', message: `Starting workflow "${wf.name}" — ${wf.steps.map((s) => s.name).join(' + ')}` });
-    app.mgr = new WorkflowManager(
-      dir,
-      getEnv,
-      (step, data) => this.broadcast(dir, { type: 'term_data', data: `[${step}] ${data}` }),
-      (port) => {
-        this.notePort(dir, port);
-        this.setStatus(dir, { type: 'app_status', state: 'running', message: `"${wf.name}" running` });
-      },
-      (step, code) => this.setStatus(dir, { type: 'app_status', state: 'stopped', message: `${step} exited (code ${code})` }),
-    );
-    await app.mgr.start(wf);
-    app.activeWorkflow = wf.name;
     return det.workflows;
   }
 
   /** Stop the app for `dir` — kills the workflow tree and any in-flight install. */
-  async stop(dir: string): Promise<void> {
+  stop(dir: string): Promise<void> {
+    return this.serialize(dir, () => this.stopLocked(dir));
+  }
+
+  private async stopLocked(dir: string): Promise<void> {
     const app = this.apps.get(dir);
     if (app) {
       app.installer?.stopRuns();
@@ -126,6 +164,9 @@ export class AppHub {
         app.mgr = null;
       }
       app.activeWorkflow = null;
+      // Drop the stale port so runningPreview()/the proxy stop pointing at the
+      // now-dead server (the source of intermittent "target unreachable" 502s).
+      app.preview.clearPort();
     }
     this.setStatus(dir, { type: 'app_status', state: 'stopped' });
   }

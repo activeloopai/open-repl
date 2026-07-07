@@ -39,6 +39,20 @@ describe('AppHub', () => {
     expect(await hub.preview(dir)!.isUp()).toBe(false);
   });
 
+  it('stop clears the preview port so the proxy stops pointing at a dead server', async () => {
+    const dir = await tmpWorkspace();
+    await fs.writeFile(path.join(dir, 'index.html'), '<h1>hi</h1>');
+    const hub = new AppHub();
+    hub.subscribe(() => {});
+    await hub.run(dir, async () => ({}));
+    expect(hub.runningPreview()).not.toBeNull(); // a running app is proxied
+    await hub.stop(dir);
+    // The bug (intermittent 502): a stale port kept runningPreview() returning a
+    // stopped workspace. After the fix the port is cleared.
+    expect(hub.preview(dir)?.getPort()).toBeNull();
+    expect(hub.runningPreview()).toBeNull();
+  });
+
   it('reports an error status for a folder with nothing runnable', async () => {
     const dir = await tmpWorkspace();
     const hub = new AppHub();
