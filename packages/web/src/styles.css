@@ -20,6 +20,7 @@
 
   --ok: #35c26a;
   --bad: #ff5c5c;
+  --bad-hover: #ff7373;
   --warn: #f0b429;
 
   --r-sm: 8px;
@@ -64,13 +65,13 @@ code {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2c2c31;
+  background: var(--bg-3);
   border: 2px solid transparent;
   background-clip: padding-box;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a41;
+  background: var(--border-strong);
   background-clip: padding-box;
 }
 
@@ -666,7 +667,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #0d1117;
+  background: var(--bg-0);
 }
 .xterm-host {
   flex: 1;
@@ -720,7 +721,7 @@ button:disabled {
   color: #fff;
 }
 .preview-bar button.stop:hover {
-  background: #ff7373;
+  background: var(--bad-hover);
 }
 .preview-bar select {
   background: var(--bg-2);
