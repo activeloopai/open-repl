@@ -30,6 +30,26 @@ export class AppHub {
   /** Per-dir promise chain so overlapping run()/stop() can't interleave and
    * clear or swap `app.mgr` mid-start. */
   private locks = new Map<string, Promise<unknown>>();
+  /** How many live sessions have each workspace open, so we can stop its app
+   * once the last tab for it goes away (no orphaned dev servers holding ports). */
+  private attached = new Map<string, number>();
+
+  /** A session opened `dir`. */
+  attach(dir: string): void {
+    this.attached.set(dir, (this.attached.get(dir) ?? 0) + 1);
+  }
+
+  /** A session left `dir` (switched project or disconnected); stop its app when
+   * no session has it open anymore. */
+  detach(dir: string): void {
+    const n = (this.attached.get(dir) ?? 1) - 1;
+    if (n > 0) {
+      this.attached.set(dir, n);
+      return;
+    }
+    this.attached.delete(dir);
+    void this.stop(dir);
+  }
 
   subscribe(fn: (dir: string, e: UiEvent) => void): () => void {
     this.listeners.add(fn);

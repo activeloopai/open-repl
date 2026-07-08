@@ -70,4 +70,47 @@ describe('AppHub', () => {
     expect(hub.preview('/ws')?.getPort()).toBe(5173);
     expect(seen.some(([, e]) => e.type === 'preview_ready')).toBe(true);
   });
+
+  it('runningPreview ignores a stopped workspace and returns the running one', async () => {
+    const a = await tmpWorkspace();
+    const b = await tmpWorkspace();
+    await fs.writeFile(path.join(a, 'index.html'), '<h1>a</h1>');
+    await fs.writeFile(path.join(b, 'index.html'), '<h1>b</h1>');
+    const hub = new AppHub();
+    hub.subscribe(() => {});
+    await hub.run(a, async () => ({}));
+    await hub.run(b, async () => ({}));
+    const bPort = hub.preview(b)!.getPort();
+    await hub.stop(a); // a is stopped; b still runs
+    expect(hub.runningPreview()?.getPort()).toBe(bPort);
+    await hub.stop(b);
+  });
+
+  it('restarting an app re-broadcasts preview_ready (iframe refreshes)', async () => {
+    const dir = await tmpWorkspace();
+    await fs.writeFile(path.join(dir, 'index.html'), '<h1>hi</h1>');
+    const hub = new AppHub();
+    let readies = 0;
+    hub.subscribe((_d, e) => { if (e.type === 'preview_ready') readies++; });
+    await hub.run(dir, async () => ({}));
+    await hub.stop(dir);
+    await hub.run(dir, async () => ({}));
+    await hub.stop(dir);
+    expect(readies).toBe(2); // one per start — the stale-port fix re-emits on restart
+  });
+
+  it('detach stops the app only when the last session for a dir leaves', async () => {
+    const dir = await tmpWorkspace();
+    await fs.writeFile(path.join(dir, 'index.html'), '<h1>hi</h1>');
+    const hub = new AppHub();
+    hub.subscribe(() => {});
+    hub.attach(dir);
+    hub.attach(dir); // two tabs open this workspace
+    await hub.run(dir, async () => ({}));
+    hub.detach(dir); // one tab leaves — app keeps running
+    expect(hub.runningPreview()).not.toBeNull();
+    hub.detach(dir); // last tab leaves — app is stopped (no orphaned server)
+    await new Promise((r) => setTimeout(r, 200)); // detach fires stop() async
+    expect(hub.runningPreview()).toBeNull();
+  });
 });

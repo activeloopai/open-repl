@@ -163,6 +163,7 @@ export class Session {
     const project = await this.projects.open(dir);
     const m = await this.createMount(project.path);
     this.mount = m;
+    this.hub.attach(m.dir);
     this.emit({ type: 'ready', workspaceDir: m.dir, provider: m.config.provider });
     // Replay the persisted conversation so reopening a project shows what was
     // built and how — the history is already loaded for the LLM, just not shown.
@@ -212,9 +213,11 @@ export class Session {
     this.activeRun = null;
     const m = this.mount;
     if (!m) return;
-    // The terminal is per-tab, so kill it; the app is workspace-level and lives
-    // in the hub, so it keeps running when a tab switches projects or closes.
+    // The terminal is per-tab, so kill it. The app is workspace-level (hub), so
+    // it keeps running while other tabs view this dir; detach() stops it once
+    // this was the last one, so no dev server is left orphaned holding a port.
     m.shell.kill();
+    this.hub.detach(m.dir);
     await m.workspace.close();
     this.mount = null;
   }
