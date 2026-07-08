@@ -160,10 +160,10 @@ export class AppHub {
       await mgr.start(wf);
       app.activeWorkflow = wf.name;
     } catch (e) {
-      // spawn ENOENT, permission error, etc. — surface it instead of leaving the
-      // UI stuck on "installing…"/"starting…".
-      app.installer = null;
-      app.mgr = null;
+      // spawn ENOENT, a step throwing mid-start, etc. Tear the partial app down
+      // first (start() may have already spawned children) so we don't orphan
+      // processes/ports, then surface the error instead of a stuck "starting…".
+      await this.teardown(app);
       this.setStatus(dir, { type: 'app_status', state: 'error', message: `Failed to start: ${e instanceof Error ? e.message : String(e)}` });
     }
     return det.workflows;
@@ -176,18 +176,24 @@ export class AppHub {
 
   private async stopLocked(dir: string): Promise<void> {
     const app = this.apps.get(dir);
-    if (app) {
-      app.installer?.stopRuns();
-      app.installer = null;
-      if (app.mgr) {
-        await app.mgr.stop();
-        app.mgr = null;
-      }
-      app.activeWorkflow = null;
-      // Drop the stale port so runningPreview()/the proxy stop pointing at the
-      // now-dead server (the source of intermittent "target unreachable" 502s).
-      app.preview.clearPort();
-    }
+    if (app) await this.teardown(app);
     this.setStatus(dir, { type: 'app_status', state: 'stopped' });
+  }
+
+  /**
+   * Kill the running app and reset its refs. Clears state *before* awaiting the
+   * process kill so a rejecting `mgr.stop()` can't leave the app half-stopped —
+   * `stop()` must never reject (detach() calls it fire-and-forget).
+   */
+  private async teardown(app: RunningApp): Promise<void> {
+    app.installer?.stopRuns();
+    app.installer = null;
+    const mgr = app.mgr;
+    app.mgr = null;
+    app.activeWorkflow = null;
+    // Drop the stale port so runningPreview()/the proxy stop pointing at the
+    // now-dead server (the source of intermittent "target unreachable" 502s).
+    app.preview.clearPort();
+    if (mgr) await mgr.stop().catch(() => {});
   }
 }
