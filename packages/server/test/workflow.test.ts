@@ -81,6 +81,48 @@ describe('detectWorkflows', () => {
     );
     expect(d.workflows[0].name).toBe('Custom');
   });
+
+  it('Procfile: runs the declared command verbatim (any framework), web previews', async () => {
+    const d = await detectWorkflows(await ws({ 'Procfile': 'web: uvicorn main:app --host 127.0.0.1\n' }));
+    expect(d.workflows[0].steps[0]).toMatchObject({ name: 'web', command: 'uvicorn main:app --host 127.0.0.1', preview: true });
+  });
+
+  it('Procfile: the web process is the preview even when it is not first', async () => {
+    const d = await detectWorkflows(await ws({ 'Procfile': 'worker: celery -A t worker\nweb: go run .\n# a comment\n' }));
+    const steps = d.workflows[0].steps;
+    expect(steps.map((s) => s.name)).toEqual(['worker', 'web']);
+    expect(steps.find((s) => s.name === 'web')?.preview).toBe(true);
+    expect(steps.find((s) => s.name === 'worker')?.preview).toBeUndefined();
+  });
+
+  it('Procfile takes priority over framework auto-detection', async () => {
+    // app.py would otherwise be run as `python app.py`; the declared command wins.
+    const d = await detectWorkflows(await ws({ 'app.py': 'x=1', 'Procfile': 'web: gunicorn app:app\n' }));
+    expect(d.workflows[0].steps[0].command).toBe('gunicorn app:app');
+  });
+
+  it('Procfile + requirements.txt → managed venv install', async () => {
+    const d = await detectWorkflows(await ws({ 'Procfile': 'web: .venv/bin/uvicorn main:app\n', 'requirements.txt': 'fastapi\nuvicorn' }));
+    expect(d.install).toBe('python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt');
+  });
+
+  it('Procfile: skips the release phase and previews nothing when there is no web', async () => {
+    const d = await detectWorkflows(await ws({ 'Procfile': 'release: python migrate.py\nworker: python worker.py\n' }));
+    const steps = d.workflows[0].steps;
+    expect(steps.map((s) => s.name)).toEqual(['worker']); // release dropped
+    expect(steps.some((s) => s.preview)).toBe(false); // no web → no preview
+  });
+
+  it('a Node project is not given a Python venv just because a stray requirements.txt exists', async () => {
+    const d = await detectWorkflows(
+      await ws({
+        '.openrepl/workflows.json': pkg({ workflows: [{ name: 'Dev', steps: [{ name: 'app', command: 'npm run dev', preview: true }] }] }),
+        'package.json': pkg({ name: 'app', scripts: { dev: 'vite' } }),
+        'requirements.txt': 'some-unrelated-tool',
+      }),
+    );
+    expect(d.install).toBe('npm install'); // not a venv/pip command
+  });
 });
 
 describe('WorkflowManager (static site)', () => {

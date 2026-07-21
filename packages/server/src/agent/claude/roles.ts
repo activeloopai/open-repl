@@ -72,6 +72,11 @@ const ORCHESTRATOR_PROMPT =
   'and after writing code you MUST call run_app to verify the app actually runs. ' +
   'If run_app returns ok:false, read the error/traceback, fix the file(s), and call run_app again — ' +
   'repeat until it returns ok:true. Do the coding yourself; do NOT delegate file edits. ' +
+  'DECLARE how the app runs so any stack works: unless it starts via a standard `npm run dev`/`npm start` ' +
+  'or a self-running entrypoint (Flask `app.run()`, `python app.py`), write a `Procfile` with a `web:` line ' +
+  'giving the exact start command — e.g. `web: .venv/bin/uvicorn main:app --host 127.0.0.1` (FastAPI), ' +
+  '`web: go run .` (Go), `web: bundle exec rails s` (Rails). OpenREPL runs that command verbatim, so it must ' +
+  'bind a port and (for Python venvs) use the `.venv/bin/` path. ' +
   'Then delegate a review to the reviewer subagent (read-only). ' +
   'CRITICAL: when the reviewer returns findings, you MUST APPLY each fix yourself with write_file ' +
   '(do not just list or describe the fixes), then call run_app once more to confirm it still runs. ' +

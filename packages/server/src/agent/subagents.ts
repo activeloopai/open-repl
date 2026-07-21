@@ -28,6 +28,8 @@ export const SUBAGENTS: SubAgentDef[] = [
       'CRITICAL: after writing code you MUST call run_app to verify the app actually runs. ' +
       'If run_app returns ok:false, read the error/traceback carefully, fix the offending file(s), then call run_app again. ' +
       'Repeat this run → fix → run loop until run_app returns ok:true. ' +
+      'Unless the app starts via `npm run dev`/`npm start` or a self-running entrypoint, DECLARE the run command in a ' +
+      '`Procfile` (`web: <command>`, e.g. `web: .venv/bin/uvicorn main:app --host 127.0.0.1`) so any framework runs. ' +
       'Do NOT declare the work done while run_app is still failing. When it finally runs, briefly state what you built and confirm it runs.',
     toolNames: ['read_file', 'write_file', 'list_dir', 'search_repo', 'run_command', 'run_app'],
   },
