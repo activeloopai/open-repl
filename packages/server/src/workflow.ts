@@ -199,8 +199,7 @@ async function nodeInstall(workspaceDir: string, pkg: any): Promise<string | nul
 /**
  * Parse a Procfile (`process_name: command` per line — the Heroku/Foreman
  * convention) into workflow steps. Language-agnostic: the command is whatever
- * the author wrote. The `web` process (or the first line) is what the Preview
- * points at.
+ * the author wrote. Only the `web` process serves an HTTP preview.
  */
 async function loadProcfile(workspaceDir: string): Promise<WorkflowStep[]> {
   let raw: string;
@@ -213,22 +212,25 @@ async function loadProcfile(workspaceDir: string): Promise<WorkflowStep[]> {
   for (const line of raw.split('\n')) {
     if (line.trim().startsWith('#')) continue;
     const m = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$/);
-    if (m) steps.push({ name: m[1], command: m[2] });
+    // Skip Heroku's `release` phase — a one-off pre-deploy hook, not a process to run.
+    if (m && m[1] !== 'release') steps.push({ name: m[1], command: m[2] });
   }
   if (!steps.length) return [];
-  (steps.find((s) => s.name === 'web') ?? steps[0]).preview = true;
+  // Only `web` serves an HTTP preview; a worker-only app has none (don't point
+  // the preview at a non-server process and leave the UI waiting for a port).
+  const web = steps.find((s) => s.name === 'web');
+  if (web) web.preview = true;
   return steps;
 }
 
 /**
  * Convenience dependency install for a *declared* run (workflows.json/Procfile):
- * npm for Node, a managed .venv for Python. The run command itself is declared;
- * this only makes its dependencies available. Framework-agnostic — no assumption
- * about how the app is served.
+ * npm for a Node project, a managed .venv for a Python one. Node and Python are
+ * mutually exclusive here — a Node app that merely has a stray requirements.txt
+ * must NOT get a surprise venv/pip step that can fail and block startup.
  */
 async function detectInstall(workspaceDir: string, pkg: any): Promise<string | null> {
-  const node = await nodeInstall(workspaceDir, pkg);
-  if (node) return node;
+  if (pkg) return nodeInstall(workspaceDir, pkg);
   const reqs = await exists(path.join(workspaceDir, 'requirements.txt'));
   const venv = await exists(path.join(workspaceDir, '.venv'));
   if (reqs && !venv) return 'python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt';

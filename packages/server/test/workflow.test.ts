@@ -105,6 +105,24 @@ describe('detectWorkflows', () => {
     const d = await detectWorkflows(await ws({ 'Procfile': 'web: .venv/bin/uvicorn main:app\n', 'requirements.txt': 'fastapi\nuvicorn' }));
     expect(d.install).toContain('python3 -m venv .venv');
   });
+
+  it('Procfile: skips the release phase and previews nothing when there is no web', async () => {
+    const d = await detectWorkflows(await ws({ 'Procfile': 'release: python migrate.py\nworker: python worker.py\n' }));
+    const steps = d.workflows[0].steps;
+    expect(steps.map((s) => s.name)).toEqual(['worker']); // release dropped
+    expect(steps.some((s) => s.preview)).toBe(false); // no web → no preview
+  });
+
+  it('a Node project is not given a Python venv just because a stray requirements.txt exists', async () => {
+    const d = await detectWorkflows(
+      await ws({
+        '.openrepl/workflows.json': pkg({ workflows: [{ name: 'Dev', steps: [{ name: 'app', command: 'npm run dev', preview: true }] }] }),
+        'package.json': pkg({ name: 'app', scripts: { dev: 'vite' } }),
+        'requirements.txt': 'some-unrelated-tool',
+      }),
+    );
+    expect(d.install).toBe('npm install'); // not a venv/pip command
+  });
 });
 
 describe('WorkflowManager (static site)', () => {
