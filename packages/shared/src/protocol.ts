@@ -91,6 +91,7 @@ export type UiEvent =
   | { type: 'projects'; projects: Project[]; active: string | null; defaultRoot: string }
   | { type: 'models'; models: ModelInfo[] }
   | { type: 'model_config'; default: string; roles: Partial<Record<AgentRole, string>>; multiAgent: boolean }
+  | { type: 'history'; messages: Message[] }
   | { type: 'error'; scope: string; message: string }
   | { type: 'done'; runId: string };
 

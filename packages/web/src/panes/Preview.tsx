@@ -17,8 +17,13 @@ export function Preview() {
   const [nonce, setNonce] = useState(0);
   const [selected, setSelected] = useState('');
 
+  // Keep `selected` valid for the *current* project. Without this, switching
+  // projects leaves a stale name (e.g. "Dev" from a previous app), and Run then
+  // requests a workflow that doesn't exist → "No runnable app found".
   useEffect(() => {
-    if (!selected && workflows.length) setSelected(workflows[0].name);
+    if (!workflows.some((w) => w.name === selected)) {
+      setSelected(workflows[0]?.name ?? '');
+    }
   }, [workflows, selected]);
 
   const busy = appStatus.state === 'installing' || appStatus.state === 'starting';

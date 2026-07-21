@@ -28,6 +28,18 @@ describe('CommandRunner.run', () => {
     expect(code).not.toBe(0); // killed → non-zero, not a false success
     expect(Date.now() - start).toBeLessThan(4000); // aborted early, not waited out
   });
+
+  it('stopRuns() kills a command that has no per-call signal (the Stop button path)', async () => {
+    // Reproduces the reported bug: a dev server started via the terminal/agent
+    // has no AbortSignal, so only stopRuns() (invoked by Stop) can end it.
+    const r = make();
+    const start = Date.now();
+    const running = r.run('sleep 5'); // no signal
+    setTimeout(() => r.stopRuns(), 150);
+    const code = await running;
+    expect(code).not.toBe(0);
+    expect(Date.now() - start).toBeLessThan(4000);
+  });
 });
 
 describe('CommandRunner — interactive shell (PTY)', () => {
