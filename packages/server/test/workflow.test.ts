@@ -103,7 +103,7 @@ describe('detectWorkflows', () => {
 
   it('Procfile + requirements.txt → managed venv install', async () => {
     const d = await detectWorkflows(await ws({ 'Procfile': 'web: .venv/bin/uvicorn main:app\n', 'requirements.txt': 'fastapi\nuvicorn' }));
-    expect(d.install).toContain('python3 -m venv .venv');
+    expect(d.install).toBe('python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt');
   });
 
   it('Procfile: skips the release phase and previews nothing when there is no web', async () => {
