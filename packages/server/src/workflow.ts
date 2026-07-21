@@ -18,8 +18,10 @@ const FRONTEND_RE = /^(dev:)?(web|client|frontend|fe|ui)$/i;
 
 /**
  * Figure out how to run the user's app — auto-detected run configurations.
- * Priority: user-defined .openrepl/workflows.json → auto-detected BE+FE pair →
- * single dev/start script → static index.html.
+ * OpenREPL stays framework-agnostic: whoever builds the app (the agent, or the
+ * user) declares how to run it, and OpenREPL just runs that. Priority:
+ * declared run command (.openrepl/workflows.json → Procfile) → auto-detected
+ * Node/Python/static as a convenience fallback.
  */
 export async function detectWorkflows(workspaceDir: string): Promise<DetectResult> {
   let pkg: any = null;
@@ -31,10 +33,16 @@ export async function detectWorkflows(workspaceDir: string): Promise<DetectResul
 
   if (pkg && isOpenReplItself(pkg)) return { self: true, install: null, workflows: [] };
 
-  // 1) user-defined override
+  // 1) declared run command — .openrepl/workflows.json (richest) then Procfile.
+  // These let any stack (FastAPI, Go, Rails, …) run without OpenREPL knowing the
+  // framework; the framework knowledge lives in the declared command.
   const userDefined = await loadUserWorkflows(workspaceDir);
   if (userDefined.length) {
-    return { self: false, install: await nodeInstall(workspaceDir, pkg), workflows: userDefined };
+    return { self: false, install: await detectInstall(workspaceDir, pkg), workflows: userDefined };
+  }
+  const procSteps = await loadProcfile(workspaceDir);
+  if (procSteps.length) {
+    return { self: false, install: await detectInstall(workspaceDir, pkg), workflows: [{ name: 'Dev', steps: procSteps }] };
   }
 
   // 2) Node — auto-detect from package.json scripts
@@ -186,6 +194,45 @@ async function loadUserWorkflows(workspaceDir: string): Promise<Workflow[]> {
 async function nodeInstall(workspaceDir: string, pkg: any): Promise<string | null> {
   if (!pkg) return null;
   return (await exists(path.join(workspaceDir, 'node_modules'))) ? null : 'npm install';
+}
+
+/**
+ * Parse a Procfile (`process_name: command` per line — the Heroku/Foreman
+ * convention) into workflow steps. Language-agnostic: the command is whatever
+ * the author wrote. The `web` process (or the first line) is what the Preview
+ * points at.
+ */
+async function loadProcfile(workspaceDir: string): Promise<WorkflowStep[]> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(path.join(workspaceDir, 'Procfile'), 'utf8');
+  } catch {
+    return [];
+  }
+  const steps: WorkflowStep[] = [];
+  for (const line of raw.split('\n')) {
+    if (line.trim().startsWith('#')) continue;
+    const m = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.+?)\s*$/);
+    if (m) steps.push({ name: m[1], command: m[2] });
+  }
+  if (!steps.length) return [];
+  (steps.find((s) => s.name === 'web') ?? steps[0]).preview = true;
+  return steps;
+}
+
+/**
+ * Convenience dependency install for a *declared* run (workflows.json/Procfile):
+ * npm for Node, a managed .venv for Python. The run command itself is declared;
+ * this only makes its dependencies available. Framework-agnostic — no assumption
+ * about how the app is served.
+ */
+async function detectInstall(workspaceDir: string, pkg: any): Promise<string | null> {
+  const node = await nodeInstall(workspaceDir, pkg);
+  if (node) return node;
+  const reqs = await exists(path.join(workspaceDir, 'requirements.txt'));
+  const venv = await exists(path.join(workspaceDir, '.venv'));
+  if (reqs && !venv) return 'python3 -m venv .venv && .venv/bin/pip install -q -r requirements.txt';
+  return null;
 }
 
 async function exists(p: string): Promise<boolean> {
